@@ -1,7 +1,7 @@
 @import "tailwindcss";
 
 /*
- * Design tokens for the Haiperbrain UI.
+ * Design tokens for the hiperbrain UI.
  * A dark, "lab-instrument" aesthetic with a cyan/violet neuron accent.
  */
 :root {
@@ -47,4 +47,15 @@ body {
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+}
+
+/*
+ * Home page = a single, non-scrolling "one page": the body is locked to exactly
+ * the viewport height so the footer is always visible. Scoped via :has() to the
+ * home marker only - every other page keeps its normal min-h-dvh scrolling.
+ */
+body:has([data-home-root]) {
+  height: 100dvh;
+  min-height: 0;
+  overflow: hidden;
 }

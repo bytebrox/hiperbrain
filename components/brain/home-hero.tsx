@@ -3,47 +3,49 @@
 import { useState } from "react";
 import { useCollectiveBrain } from "@/lib/use-collective-brain";
 import { BrainCanvas } from "./brain-canvas";
+import { BrainLoader } from "./brain-loader";
 import { CommandBar } from "./command-bar";
 
-const EXAMPLES = [
-  "capital of Japan",
-  "currency of France",
-  "sound of Dog",
-  "color of Sky",
-];
-
 export function HomeHero() {
-  const { brain, facts, status, teach } = useCollectiveBrain();
+  const { brain, facts, status, teach, ready } = useCollectiveBrain();
   const [value, setValue] = useState("");
   const stats = brain.stats();
+  const loading = status === "loading" || (status === "ready" && !ready);
 
   return (
-    <div className="flex min-h-[calc(100vh-4rem)] flex-col items-center justify-center px-4 py-10">
-      <div className="w-full max-w-2xl">
-        <BrainCanvas facts={facts} height={380} className="mb-2 w-full cursor-crosshair" />
+    <div
+      data-home-root
+      className="flex min-h-0 flex-1 flex-col items-center px-4 py-4"
+    >
+      <div className="flex min-h-0 w-full max-w-2xl flex-1 flex-col justify-center">
+        <div className="relative flex min-h-0 w-full flex-1 flex-col">
+          <BrainCanvas
+            facts={facts}
+            className="min-h-[160px] w-full flex-1 cursor-crosshair"
+          />
+          {loading ? (
+            <BrainLoader
+              label={
+                status === "loading"
+                  ? "connecting to the shared brain…"
+                  : "assembling 10,000-dimensional memory…"
+              }
+            />
+          ) : null}
+        </div>
 
-        <div className="mb-8 text-center">
-          <h1 className="font-mono text-2xl font-semibold tracking-tight">haiperbrain</h1>
+        <div className="mt-2 mb-6 shrink-0 text-center">
+          <h1 className="font-mono text-2xl font-semibold tracking-tight">hiperbrain</h1>
           <p className="mt-1 text-sm text-muted">
             a shared brain that thinks in 10,000 dimensions
           </p>
         </div>
 
-        <CommandBar value={value} onValueChange={setValue} brain={brain} onTeach={teach} />
-
-        <div className="mt-6 flex flex-wrap justify-center gap-2">
-          {EXAMPLES.map((example) => (
-            <button
-              key={example}
-              onClick={() => setValue(example)}
-              className="rounded-full border border-border px-3 py-1 font-mono text-xs text-muted transition-colors hover:border-accent/50 hover:text-foreground"
-            >
-              {example}
-            </button>
-          ))}
+        <div className="shrink-0">
+          <CommandBar value={value} onValueChange={setValue} brain={brain} onTeach={teach} />
         </div>
 
-        <p className="mt-8 text-center text-xs text-muted">
+        <p className="mt-6 shrink-0 text-center text-xs text-muted">
           {status === "ready" ? (
             <>
               {stats.facts.toLocaleString()} facts · {stats.concepts.toLocaleString()} concepts ·{" "}
@@ -54,10 +56,6 @@ export function HomeHero() {
           ) : (
             "connecting to the shared brain..."
           )}
-        </p>
-        <p className="mt-2 text-center text-xs text-muted/60">
-          type <span className="font-mono">relation of subject</span> to ask, or{" "}
-          <span className="font-mono">relation of subject is object</span> to teach
         </p>
       </div>
     </div>

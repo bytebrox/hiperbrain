@@ -15,12 +15,19 @@
  */
 
 import type { SupabaseClient } from "@supabase/supabase-js";
-import type { Fact } from "@/lib/hdc";
+import type { Fact } from "@hiperbrain/core";
 import { factKey } from "./moderation";
 import { getServiceClient, hasSupabase } from "./supabase";
 
 /** Maximum number of facts the shared brain will hold. */
-export const MAX_FACTS = 1000;
+export const MAX_FACTS = 10000;
+
+/**
+ * Page size for reads. Kept at/below PostgREST's default `db-max-rows` (1000)
+ * so a full page reliably signals "there may be more", letting us paginate
+ * past the per-request row cap without changing any Supabase setting.
+ */
+const PAGE_SIZE = 500;
 
 export type AddStatus = "added" | "duplicate" | "full";
 
@@ -80,18 +87,30 @@ class SupabaseStore implements FactStore {
   }
 
   async listFacts(): Promise<StoredFact[]> {
-    const { data, error } = await this.client
-      .from("facts")
-      .select("subject,relation,object,created_at")
-      .order("created_at", { ascending: true })
-      .limit(MAX_FACTS);
-    if (error) throw error;
-    return (data as FactRow[]).map((row) => ({
-      subject: row.subject,
-      relation: row.relation,
-      object: row.object,
-      ts: Date.parse(row.created_at),
-    }));
+    const out: StoredFact[] = [];
+    // Page through results so we are not limited by PostgREST's per-request
+    // row cap. Stop at MAX_FACTS or when a short page signals the end.
+    for (let from = 0; from < MAX_FACTS; from += PAGE_SIZE) {
+      const to = Math.min(from + PAGE_SIZE, MAX_FACTS) - 1;
+      const { data, error } = await this.client
+        .from("facts")
+        .select("subject,relation,object,created_at")
+        .order("created_at", { ascending: true })
+        .range(from, to);
+      if (error) throw error;
+
+      const rows = data as FactRow[];
+      for (const row of rows) {
+        out.push({
+          subject: row.subject,
+          relation: row.relation,
+          object: row.object,
+          ts: Date.parse(row.created_at),
+        });
+      }
+      if (rows.length < to - from + 1) break; // last page reached
+    }
+    return out;
   }
 
   async count(): Promise<number> {

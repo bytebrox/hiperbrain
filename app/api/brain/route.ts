@@ -16,6 +16,7 @@ import {
   MAX_FACTS,
 } from "@/lib/server/store";
 import { checkRateLimit } from "@/lib/server/ratelimit";
+import { isVerificationEnabled, verifyFact } from "@/lib/server/verify-fact";
 
 export const dynamic = "force-dynamic";
 
@@ -27,7 +28,19 @@ function clientIp(request: Request): string {
 
 export async function GET() {
   const facts = await getFactsCached();
-  return NextResponse.json({ facts, total: facts.length, capacity: MAX_FACTS });
+  return NextResponse.json(
+    { facts, total: facts.length, capacity: MAX_FACTS },
+    {
+      headers: {
+        // Let Vercel's CDN serve a shared snapshot so Supabase is hit at most
+        // ~once per window regardless of traffic, and let browsers reuse it
+        // across navigations. Clients stay current via the realtime stream, so
+        // a slightly stale initial snapshot is fine.
+        "Cache-Control":
+          "public, max-age=10, s-maxage=30, stale-while-revalidate=300",
+      },
+    },
+  );
 }
 
 export async function POST(request: Request) {
@@ -49,6 +62,21 @@ export async function POST(request: Request) {
   const result = validateFact(body as Record<string, unknown>);
   if (!result.ok) {
     return NextResponse.json({ error: result.error }, { status: 400 });
+  }
+
+  // Optional factual check: reject only claims a fact-checker is confident are
+  // wrong. "uncertain" (and any checker outage) is allowed through.
+  if (isVerificationEnabled()) {
+    const check = await verifyFact(result.fact);
+    if (check.verdict === "false") {
+      return NextResponse.json(
+        {
+          error: `That doesn't appear to be correct, so it wasn't added: ${check.reason}`,
+          verdict: check.verdict,
+        },
+        { status: 422 },
+      );
+    }
   }
 
   const store = getStore();

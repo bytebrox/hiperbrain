@@ -1,4 +1,4 @@
--- Haiperbrain database schema for Supabase (Postgres).
+-- hiperbrain database schema for Supabase (Postgres).
 -- Run this once in the Supabase SQL editor (or via the Supabase CLI).
 --
 -- Design notes:

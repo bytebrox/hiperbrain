@@ -1,10 +1,10 @@
-# Haiperbrain
+# hiperbrain
 
 ### A collective brain that thinks in 10,000 dimensions.
 
-[**haiperbrain.com**](https://haiperbrain.com)
+[**www.hiperbrain.com**](https://www.hiperbrain.com)
 
-Haiperbrain is **not** another ChatGPT wrapper. It is a small, real, brain-inspired
+hiperbrain is **not** another ChatGPT wrapper. It is a small, real, brain-inspired
 computing engine built on **Hyperdimensional Computing (HDC / Vector Symbolic
 Architectures)** - the same family of ideas neuroscientists use to model how
 biological memory might actually work.
@@ -25,15 +25,21 @@ The entire interface is a single command line - search-engine simple:
 
 - **Ask** &nbsp;`relation of subject` &nbsp;->&nbsp; `capital of France`
 - **Teach** &nbsp;`relation of subject is object` &nbsp;->&nbsp; `capital of Spain is Madrid`
+- **Reason** &nbsp;`A is to B as C is to ?` &nbsp;->&nbsp; `USA is to Dollar as Mexico is to ?` &nbsp;->&nbsp; **Peso**
 
-While you do, a living, self-organising 3D neural map shows the brain thinking,
-and the live [activity log](https://haiperbrain.com/logs) streams every fact the
-world teaches it, in real time.
+That last one is the kicker: nobody ever taught it that "Dollar relates to Peso."
+It works out the analogy from vector algebra alone. While you play, a living,
+self-organising 3D neural map shows the brain thinking, and the live
+[activity log](https://www.hiperbrain.com/logs) streams every fact the world teaches
+it, in real time.
 
 ---
 
 ## Why people stop and stare
 
+- **It reasons by analogy.** Ask `USA is to Dollar as Mexico is to ?` and it
+  answers **Peso** - a relationship it was never explicitly taught. This is the
+  famous "Dollar of Mexico" result, computed live from algebra.
 - **It is not an LLM.** No transformer, no prompt, no hallucinations from a
   black box. The answer literally falls out of vector algebra - and you can read
   the entire engine end to end.
@@ -44,10 +50,26 @@ world teaches it, in real time.
   "thinking" is distributed across every visitor.
 - **It is fault-tolerant like real memory.** Concepts are smeared
   *holographically* across all 10,000 dimensions. Corrupt a third of the vector
-  and the right answer still comes back - exactly the graceful degradation you
-  see in biological brains.
+  and the right answer still comes back - there is an interactive demo of exactly
+  this on the [docs](https://www.hiperbrain.com/docs) page.
 - **It grows with the crowd.** Knowledge is additive and order-independent, so
   thousands of people can pour facts into the same memory with zero coordination.
+
+## Not an LLM - a genuinely different kind of AI
+
+Mainstream AI is either a black-box neural network or brittle symbolic logic.
+Hyperdimensional Computing is a long-overlooked third path:
+
+| | Large language models | hiperbrain (HDC) |
+|---|---|---|
+| Transparency | Black box, billions of weights | Read the whole engine yourself |
+| Learning | Train for weeks on huge corpora | One step, instant, one-shot |
+| Hardware | GPU clusters, per-call cost | Plain CPU, in your browser, free |
+| Reasoning | Implicit, unverifiable | Explicit, inspectable algebra |
+| Robustness | Fragile to weight corruption | Survives losing a third of its bits |
+
+HDC has decades of peer-reviewed research behind it - it has just never been a
+thing the public could *touch*. That is what this is.
 
 ---
 
@@ -74,7 +96,7 @@ known concepts - and the answer simply emerges. No lookup table. No neural
 network. Just algebra.
 
 The full, plain-language walkthrough lives on the in-app
-[how-it-works](https://haiperbrain.com/how-it-works) page.
+[docs](https://www.hiperbrain.com/docs) page.
 
 ---
 
@@ -100,28 +122,45 @@ the shared memory:
 - input validation (length and character-set limits, nonsense rejection),
 - a content blocklist filter,
 - per-IP rate limiting,
-- duplicate detection and a global capacity cap.
+- duplicate detection and a global capacity cap,
+- an optional AI fact-check that screens new claims for obvious falsehoods - it
+  *fails open*, so it only ever blocks confident mistakes, never your answers.
 
-Simple, transparent, and easy to extend.
+Crucially, none of this touches how questions are answered: every answer is still
+pure vector algebra. The AI check only ever guards what gets *written* into the
+shared memory.
 
 ---
 
-## It's a real engine, not a mock-up
+## It's a real engine, not a mock-up - use it yourself
 
-The core is dependency-free TypeScript you can actually use:
+The core is published on npm as a tiny, **dependency-free** package -
+[`@hiperbrain/core`](https://www.npmjs.com/package/@hiperbrain/core) - and it is
+the *exact same engine* that powers this site. It runs anywhere JavaScript runs:
+browser, Node, Edge, Deno, Bun.
 
-```ts
-import { KnowledgeBrain } from "@/lib/hdc";
+[![npm](https://img.shields.io/npm/v/@hiperbrain/core?color=22d3ee&label=%40hiperbrain%2Fcore)](https://www.npmjs.com/package/@hiperbrain/core)
 
-const brain = new KnowledgeBrain();
-brain.learn({ subject: "France", relation: "capital", object: "Paris" });
-brain.learn({ subject: "Japan",  relation: "capital", object: "Tokyo" });
-
-brain.ask("France", "capital")[0].name; // "Paris"
+```bash
+npm install @hiperbrain/core
 ```
 
-That's the same engine powering the site - learning and reasoning in a few
-kilobytes of math.
+```ts
+import { KnowledgeBrain } from "@hiperbrain/core";
+
+const brain = new KnowledgeBrain();
+brain.learn({ subject: "France", relation: "capital",  object: "Paris" });
+brain.learn({ subject: "France", relation: "currency", object: "Euro" });
+brain.learn({ subject: "Japan",  relation: "currency", object: "Yen" });
+
+brain.ask("France", "capital")[0].name;   // "Paris"
+brain.analogy("Yen", "Japan", "France");  // -> Euro (never explicitly paired)
+```
+
+You also get the raw primitives (`bind`, `bundle`, `permute`,
+`cosineSimilarity`) and a `Brain` facade for records, one-shot text
+classification and sequence memory - learning and reasoning in a few kilobytes
+of math. See the [package README](packages/core/README.md) for the full API.
 
 ---
 

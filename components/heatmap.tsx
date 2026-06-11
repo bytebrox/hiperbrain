@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useRef } from "react";
-import type { Hypervector } from "@/lib/hdc";
+import type { Hypervector } from "@hiperbrain/core";
 
 interface HeatmapProps {
   vector: Hypervector;

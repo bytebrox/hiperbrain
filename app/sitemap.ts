@@ -1,12 +1,12 @@
 import type { MetadataRoute } from "next";
 
 export default function sitemap(): MetadataRoute.Sitemap {
-  const base = "https://haiperbrain.com";
+  const base = "https://www.hiperbrain.com";
   const now = new Date();
   return [
     { url: base, lastModified: now, changeFrequency: "daily", priority: 1 },
     {
-      url: `${base}/how-it-works`,
+      url: `${base}/docs`,
       lastModified: now,
       changeFrequency: "monthly",
       priority: 0.7,

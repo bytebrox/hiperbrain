@@ -2,6 +2,7 @@ import type { Metadata, Viewport } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
+import { SiteFooter } from "@/components/site-footer";
 
 const geistSans = Geist({
   variable: "--font-geist-sans",
@@ -13,16 +14,16 @@ const geistMono = Geist_Mono({
   subsets: ["latin"],
 });
 
-const TITLE = "Haiperbrain - a brain that computes with 10,000-dimensional vectors";
+const TITLE = "hiperbrain - a brain that computes with 10,000-dimensional vectors";
 const DESCRIPTION =
   "An interactive collective brain built on Hyperdimensional Computing (HDC / VSA). Teach it facts and ask it questions - it learns one-shot, reasons by analogy and is fault-tolerant, all in pure CPU math, live in your browser.";
 
 export const metadata: Metadata = {
-  metadataBase: new URL("https://haiperbrain.com"),
-  applicationName: "Haiperbrain",
+  metadataBase: new URL("https://www.hiperbrain.com"),
+  applicationName: "hiperbrain",
   title: {
     default: TITLE,
-    template: "%s - Haiperbrain",
+    template: "%s - hiperbrain",
   },
   description: DESCRIPTION,
   keywords: [
@@ -33,10 +34,10 @@ export const metadata: Metadata = {
     "collective brain",
     "associative memory",
     "neuro-symbolic AI",
-    "Haiperbrain",
+    "hiperbrain",
   ],
-  authors: [{ name: "Haiperbrain" }],
-  creator: "Haiperbrain",
+  authors: [{ name: "hiperbrain" }],
+  creator: "hiperbrain",
   alternates: {
     canonical: "/",
   },
@@ -44,14 +45,16 @@ export const metadata: Metadata = {
     title: TITLE,
     description:
       "A collective brain built on Hyperdimensional Computing. Teach it facts, ask it questions - the thinking happens live in your browser.",
-    url: "https://haiperbrain.com",
-    siteName: "Haiperbrain",
+    url: "https://www.hiperbrain.com",
+    siteName: "hiperbrain",
     locale: "en_US",
     type: "website",
   },
   twitter: {
     card: "summary_large_image",
-    title: "Haiperbrain",
+    title: "hiperbrain",
+    site: "@hiperbrainx",
+    creator: "@hiperbrainx",
     description:
       "A collective brain built on Hyperdimensional Computing. Teach it facts, ask it questions - the thinking happens live in your browser.",
   },
@@ -76,9 +79,10 @@ export default function RootLayout({
       lang="en"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col">
+      <body className="flex min-h-dvh flex-col">
         <SiteHeader />
-        <main className="flex-1">{children}</main>
+        <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+        <SiteFooter />
       </body>
     </html>
   );

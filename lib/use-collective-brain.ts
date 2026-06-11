@@ -1,7 +1,7 @@
 "use client";
 
-import { useCallback, useEffect, useMemo, useState } from "react";
-import { type Fact, KnowledgeBrain } from "@/lib/hdc";
+import { useCallback, useEffect, useState } from "react";
+import { type Fact, KnowledgeBrain } from "@hiperbrain/core";
 import { getBrowserClient } from "@/lib/supabase-browser";
 
 export type TimedFact = Fact & { ts?: number };
@@ -47,7 +47,9 @@ export function useCollectiveBrain() {
     let cancelled = false;
     (async () => {
       try {
-        const res = await fetch("/api/brain", { cache: "no-store" });
+        // Default caching so the browser/CDN can reuse the snapshot (see the
+        // Cache-Control header in the API route). Realtime keeps us live after.
+        const res = await fetch("/api/brain");
         if (!res.ok) throw new Error("Request failed");
         const data: BrainResponse = await res.json();
         if (cancelled) return;
@@ -88,7 +90,27 @@ export function useCollectiveBrain() {
     };
   }, [addFact]);
 
-  const brain = useMemo(() => KnowledgeBrain.fromFacts(facts), [facts]);
+  // The HDC brain is expensive to assemble (thousands of 10,000-dimensional
+  // vectors). We build it *off* the render path - after the facts have arrived
+  // and the canvas has painted - so the animation appears immediately instead
+  // of waiting for the math. `ready` flips once the first build is done.
+  const [brain, setBrain] = useState<KnowledgeBrain>(() => KnowledgeBrain.fromFacts([]));
+  const [ready, setReady] = useState(false);
+
+  useEffect(() => {
+    if (facts.length === 0) return;
+    let cancelled = false;
+    // Debounce so bursts of realtime inserts coalesce into one rebuild.
+    const id = window.setTimeout(() => {
+      if (cancelled) return;
+      setBrain(KnowledgeBrain.fromFacts(facts));
+      setReady(true);
+    }, 120);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [facts]);
 
   const teach = useCallback(
     async (fact: Fact): Promise<TeachOutcome> => {
@@ -115,5 +137,5 @@ export function useCollectiveBrain() {
     [addFact],
   );
 
-  return { facts, brain, status, capacity, teach };
+  return { facts, brain, status, capacity, teach, ready };
 }

@@ -8,7 +8,7 @@
  * first line of defence, not a complete moderation system.
  */
 
-import type { Fact } from "@/lib/hdc";
+import type { Fact } from "@hiperbrain/core";
 
 export const FIELD_MAX_LENGTH = 40;
 export const FIELD_MIN_LENGTH = 1;

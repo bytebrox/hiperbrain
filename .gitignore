@@ -36,6 +36,13 @@ yarn-error.log*
 # vercel
 .vercel
 
+# one-off DB seeding / maintenance scripts (not needed by the app at runtime)
+/scripts/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts
+
+# monorepo package build outputs
+/packages/*/dist
+/packages/*/node_modules
