@@ -46,7 +46,7 @@ export function SiteHeader() {
             );
           })}
           <a
-            href="https://github.com"
+            href="https://github.com/bytebrox/hyperbrain"
             target="_blank"
             rel="noreferrer"
             className="ml-2 hidden rounded-md border border-border px-3 py-1.5 text-sm text-muted transition-colors hover:text-foreground sm:inline-block"

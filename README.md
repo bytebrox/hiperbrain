@@ -1,153 +1,127 @@
 # Haiperbrain
 
-A **collective** brain that thinks in 10,000 dimensions - built on **Hyperdimensional Computing (HDC / Vector Symbolic Architectures)**.
+### A collective brain that thinks in 10,000 dimensions.
 
-Haiperbrain is **not** an LLM wrapper. It is a small, real, brain-inspired computing engine where every concept is a high-dimensional bipolar vector. Visitors **teach it facts** and **ask it questions**; the knowledge is shared with everyone, while the actual thinking happens live in each visitor's browser with plain CPU math. No GPU, no language model, no per-request API cost.
+[**haiperbrain.com**](https://haiperbrain.com)
 
-The whole experience is a single command line, search-engine style:
+Haiperbrain is **not** another ChatGPT wrapper. It is a small, real, brain-inspired
+computing engine built on **Hyperdimensional Computing (HDC / Vector Symbolic
+Architectures)** - the same family of ideas neuroscientists use to model how
+biological memory might actually work.
 
-- **Ask** with `relation of subject` - e.g. `capital of France`.
-- **Teach** with `relation of subject is object` - e.g. `capital of Spain is Madrid`.
+You teach it facts. You ask it questions. It answers - not by calling a giant
+language model in some data center, but by doing pure mathematics on enormous
+vectors, **live in your browser**. No GPU. No language model. No per-question API bill.
 
-A live, self-organising neural map shows the brain's current state, and the [`/logs`](app/logs/page.tsx) page streams everything it has ever been taught.
+And the knowledge is **shared**: every fact anyone teaches becomes part of one
+collective memory that everyone draws from. A brain that the whole internet
+builds together.
 
 ---
 
-## How it works in one paragraph
+## Try it in one line
 
-Every concept (a word or short phrase) maps to a random vector with `D = 10,000` components of `-1` / `+1`. In such high-dimensional space, random vectors are almost always near-orthogonal, leaving effectively unlimited room for non-interfering concepts. Three reversible operations build everything: **bind** (`⊗`, associate two vectors), **bundle** (superimpose into a set), and **permute** (encode order). A fact `(subject, relation, object)` is stored by binding `subject ⊗ object` and bundling it into a per-relation memory vector. A question is answered by binding the known part back in and cleaning up the result against known concepts - the answer falls out of the algebra. Read the full explanation on the in-app `/how-it-works` page.
+The entire interface is a single command line - search-engine simple:
+
+- **Ask** &nbsp;`relation of subject` &nbsp;->&nbsp; `capital of France`
+- **Teach** &nbsp;`relation of subject is object` &nbsp;->&nbsp; `capital of Spain is Madrid`
+
+While you do, a living, self-organising 3D neural map shows the brain thinking,
+and the live [activity log](https://haiperbrain.com/logs) streams every fact the
+world teaches it, in real time.
 
 ---
 
-## The collective brain
+## Why people stop and stare
 
-- **Shared knowledge, local computation.** Facts are stored as tiny text triples in a database; each browser rebuilds the HDC brain from them and runs all vector math client-side.
-- **Additive by nature.** Bundling is commutative and order-independent, so any number of contributors fold their facts into the same memory without coordination.
-- **One-shot & instant.** "Learning" is a single superposition step - no training loop, no model download.
-- **Graceful capacity.** Each relation's memory has finite capacity; as it fills, recall gets fuzzier, just like biological associative memory.
+- **It is not an LLM.** No transformer, no prompt, no hallucinations from a
+  black box. The answer literally falls out of vector algebra - and you can read
+  the entire engine end to end.
+- **It learns in one shot.** Teaching a new fact is a *single* mathematical step.
+  No training run, no fine-tuning, no waiting. Type it; it knows it instantly.
+- **It thinks in your browser.** All the heavy math runs client-side on a normal
+  CPU. The server only stores tiny lines of text. It scales because the
+  "thinking" is distributed across every visitor.
+- **It is fault-tolerant like real memory.** Concepts are smeared
+  *holographically* across all 10,000 dimensions. Corrupt a third of the vector
+  and the right answer still comes back - exactly the graceful degradation you
+  see in biological brains.
+- **It grows with the crowd.** Knowledge is additive and order-independent, so
+  thousands of people can pour facts into the same memory with zero coordination.
 
-### Safety
+---
 
-Because the brain is public and writable, every submission is checked server-side before it joins the shared memory:
+## How it actually works
 
-- input validation (length and character-set limits, low-information/nonsense rejection),
+Every concept - a word or short phrase - maps to a random vector with
+`D = 10,000` components that are simply `-1` or `+1`. In such high-dimensional
+space, two random vectors are almost always *near-orthogonal*, which leaves
+effectively unlimited room for distinct concepts that never interfere with each
+other.
+
+Everything is built from three reversible operations:
+
+- **bind** (`⊗`) associates two vectors (a role with a value, like
+  `capital ⊗ Paris`),
+- **bundle** superimposes many vectors into one "set" that stays similar to each
+  member,
+- **permute** shifts components to encode order, position and time.
+
+A fact `(subject, relation, object)` is stored by binding `subject ⊗ object` and
+bundling it into a memory vector for that relation. A question is answered by
+binding the known part back in and **cleaning up** the noisy result against the
+known concepts - and the answer simply emerges. No lookup table. No neural
+network. Just algebra.
+
+The full, plain-language walkthrough lives on the in-app
+[how-it-works](https://haiperbrain.com/how-it-works) page.
+
+---
+
+## One shared, collective brain
+
+- **Shared knowledge, local computation.** Facts live as tiny text triples; every
+  browser rebuilds the brain from them and runs all the vector math itself.
+- **Additive by nature.** Because bundling is commutative, any number of
+  contributors fold their facts into the same memory without stepping on each
+  other.
+- **Live everywhere.** New facts stream to every open tab the instant they are
+  taught - watch the map and the log grow as the world teaches it.
+- **Graceful capacity.** Each relation's memory has a finite capacity; as it
+  fills, recall gets gently fuzzier - just like biological associative memory.
+
+---
+
+## Built to stay clean
+
+The brain is public and writable, so every submission is checked before it joins
+the shared memory:
+
+- input validation (length and character-set limits, nonsense rejection),
 - a content blocklist filter,
-- per-IP rate limiting (Postgres-backed sliding window),
+- per-IP rate limiting,
 - duplicate detection and a global capacity cap.
 
-These live in [`lib/server/moderation.ts`](lib/server/moderation.ts) and [`lib/server/ratelimit.ts`](lib/server/ratelimit.ts) and are intentionally simple - extend them or plug in a dedicated moderation service for production.
+Simple, transparent, and easy to extend.
 
 ---
 
-## The HDC engine
+## It's a real engine, not a mock-up
 
-Framework-agnostic TypeScript in [`lib/hdc/`](lib/hdc), with no runtime dependencies:
-
-- [`hypervector.ts`](lib/hdc/hypervector.ts) - the bipolar hypervector type and primitives: `bind`, `bundle`, `permute`, `cosineSimilarity`, `corrupt`, plus deterministic seeded generation.
-- [`itemMemory.ts`](lib/hdc/itemMemory.ts) - "cleanup memory" that maps a noisy vector back to the closest known symbol.
-- [`knowledge.ts`](lib/hdc/knowledge.ts) - the collective `KnowledgeBrain`: learn/ask triples, bucketed per relation.
-- [`encoders.ts`](lib/hdc/encoders.ts) and [`brain.ts`](lib/hdc/brain.ts) - a text encoder and a higher-level `Brain` with one-shot text classification, analogy and sequence memory (used by the test suite and available to build on).
-
-### A taste of the API
+The core is dependency-free TypeScript you can actually use:
 
 ```ts
 import { KnowledgeBrain } from "@/lib/hdc";
 
 const brain = new KnowledgeBrain();
 brain.learn({ subject: "France", relation: "capital", object: "Paris" });
-brain.learn({ subject: "Japan", relation: "capital", object: "Tokyo" });
+brain.learn({ subject: "Japan",  relation: "capital", object: "Tokyo" });
 
 brain.ask("France", "capital")[0].name; // "Paris"
 ```
 
----
-
-## Architecture
-
-```
-Browser                          Server (Vercel)            Database
---------                         ----------------           --------
-KnowledgeBrain (HDC math)  --->  GET  /api/brain     --->   Supabase Postgres
-  rebuilt from facts             POST /api/brain             (text triples)
-  all vector ops local           validate + rate limit
-        ^                                                          |
-        |____________ realtime INSERT stream (live) _______________|
-```
-
-- [`app/api/brain/route.ts`](app/api/brain/route.ts) - serves facts (briefly cached in-process) and accepts new ones.
-- [`lib/server/store.ts`](lib/server/store.ts) - Supabase-backed store with an in-memory dev fallback and seed knowledge.
-- [`lib/server/supabase.ts`](lib/server/supabase.ts) - server (service-role) Supabase client.
-- [`lib/use-collective-brain.ts`](lib/use-collective-brain.ts) - client hook that loads facts, subscribes to live inserts, builds the brain and teaches new facts.
-
----
-
-## Getting started
-
-Requirements: Node.js 18.18+ (developed on Node 24).
-
-```bash
-npm install
-npm run dev      # http://localhost:3000  (runs with an in-memory store, no config)
-npm test         # run the HDC engine unit tests (Vitest)
-npm run build    # production build
-```
-
-Locally the brain uses an in-memory store, so it works with zero configuration - it just is not shared between machines and resets on restart.
-
-### Enabling the shared, realtime brain
-
-1. Create a free project at [Supabase](https://supabase.com).
-2. Open the SQL editor and run [`supabase/schema.sql`](supabase/schema.sql) (creates the `facts` table, RLS policies, the realtime stream and the rate-limit table).
-3. Copy `.env.example` to `.env.local` and fill in the values from Project Settings -> API:
-
-   ```
-   NEXT_PUBLIC_SUPABASE_URL=...
-   NEXT_PUBLIC_SUPABASE_ANON_KEY=...
-   SUPABASE_SERVICE_ROLE_KEY=...
-   ```
-
-4. Restart `npm run dev`. The brain is now backed by Postgres, shared, and updates live across all open tabs.
-
----
-
-## Deployment (Vercel)
-
-1. Push this repository to GitHub.
-2. Import the repo in Vercel and accept the detected **Next.js** defaults.
-3. Run [`supabase/schema.sql`](supabase/schema.sql) in your Supabase project.
-4. Add `NEXT_PUBLIC_SUPABASE_URL`, `NEXT_PUBLIC_SUPABASE_ANON_KEY` and `SUPABASE_SERVICE_ROLE_KEY` as Environment Variables.
-5. Deploy.
-
-Without the env vars the deployment still builds and runs, but each serverless instance keeps its own in-memory brain instead of a shared one.
-
----
-
-## Project layout
-
-```
-app/
-  page.tsx           home = the command line + live brain animation
-  logs/              the activity feed of everything taught
-  how-it-works/      a plain-language explainer
-  api/brain/         GET facts + POST teach
-components/
-  brain/             home-hero, command-bar, brain-canvas (the animation)
-  heatmap.tsx, site-header.tsx
-lib/
-  hdc/               the dependency-free HDC engine + unit tests
-  server/            fact store, moderation and rate limiting
-  parse-command.ts   single-line "ask vs teach" grammar
-  use-collective-brain.ts
-```
-
----
-
-## Tech stack
-
-- [Next.js](https://nextjs.org/) (App Router) + React + TypeScript
-- Tailwind CSS (no UI-kit dependency)
-- [Supabase](https://supabase.com/) (Postgres + Realtime + Row Level Security) for the shared, live store
-- [Vitest](https://vitest.dev/) for the engine tests
+That's the same engine powering the site - learning and reasoning in a few
+kilobytes of math.
 
 ---
 

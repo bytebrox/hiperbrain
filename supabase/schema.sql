@@ -33,8 +33,11 @@ drop policy if exists "facts public read" on public.facts;
 create policy "facts public read" on public.facts
   for select using (true);
 
--- Stream new facts to subscribed clients in real time.
-alter publication supabase_realtime add table public.facts;
+-- Stream new facts to subscribed clients in real time (idempotent).
+do $$ begin
+  alter publication supabase_realtime add table public.facts;
+exception when duplicate_object then null;
+end $$;
 
 -- ---------------------------------------------------------------------------
 -- Rate limiting: server-only log of write attempts per IP
