@@ -1,6 +1,6 @@
 {
   "name": "@hiperbrain/core",
-  "version": "0.1.0",
+  "version": "0.1.1",
   "description": "Hyperdimensional Computing (HDC / VSA) engine: bind, bundle, permute, cleanup memory, one-shot learning and analogical reasoning. Zero dependencies; runs in the browser, Node, Edge, Deno and Bun.",
   "license": "MIT",
   "author": "hiperbrain",
