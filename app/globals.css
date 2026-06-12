@@ -28,19 +28,70 @@
   --color-accent-2: var(--accent-2);
   --color-positive: var(--positive);
   --color-negative: var(--negative);
-  --font-sans: var(--font-geist-sans);
-  --font-mono: var(--font-geist-mono);
+  --font-sans: var(--font-plex-mono);
+  --font-mono: var(--font-plex-mono);
 }
 
 * {
   border-color: var(--border);
 }
 
-body {
+html {
+  /* The base color lives on <html> so the fixed starfield (a -z-10 child of
+     <body>) paints above it but below the page content. A transparent <body>
+     keeps the stars visible. */
   background: var(--background);
+}
+
+body {
+  background: transparent;
   color: var(--foreground);
-  font-family: var(--font-sans), system-ui, sans-serif;
+  font-family: var(--font-sans), ui-monospace, SFMono-Regular, Menlo, monospace;
   -webkit-font-smoothing: antialiased;
+}
+
+/* Soft radial aura that frames the hero brain (upper-center) and gives the
+   whole page subtle depth without any moving particles. */
+.bg-aura {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  background:
+    radial-gradient(60% 50% at 50% 34%, rgba(34, 211, 238, 0.15), transparent 68%),
+    radial-gradient(46% 42% at 61% 28%, rgba(167, 139, 250, 0.11), transparent 70%),
+    radial-gradient(150% 110% at 50% 6%, rgba(120, 160, 220, 0.055), transparent 58%),
+    radial-gradient(120% 120% at 50% 42%, transparent 62%, rgba(0, 0, 0, 0.45) 100%);
+}
+
+/* Fine film grain. A tiny desaturated SVG noise tile. On a near-black surface
+   it has to be blended with "screen" (overlay would leave black untouched and
+   stay invisible), so the flat dark area gets real analog texture. */
+.bg-grain {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  opacity: 0.07;
+  mix-blend-mode: screen;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 160px 160px;
+  animation: grain-shift 0.7s steps(6) infinite;
+}
+
+@keyframes grain-shift {
+  0% {
+    background-position: 0 0;
+  }
+  100% {
+    background-position: 160px 160px;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .bg-grain {
+    animation: none;
+  }
 }
 
 /* Thin scrollbars that match the dark theme. */
@@ -50,12 +101,19 @@ body {
 }
 
 /*
- * Home page = a single, non-scrolling "one page": the body is locked to exactly
- * the viewport height so the footer is always visible. Scoped via :has() to the
- * home marker only - every other page keeps its normal min-h-dvh scrolling.
+ * Home page = a single, non-scrolling "one page" on larger screens: the body is
+ * locked to exactly the viewport height so the footer is always visible. Scoped
+ * via :has() to the home marker only - every other page keeps its normal
+ * min-h-dvh scrolling.
+ *
+ * On phones there is simply not enough vertical room to fit the canvas, command
+ * bar and footer at once, so below `lg` the home page scrolls normally instead
+ * of being crushed. The lock only kicks in from 1024px up.
  */
-body:has([data-home-root]) {
-  height: 100dvh;
-  min-height: 0;
-  overflow: hidden;
+@media (min-width: 1024px) {
+  body:has([data-home-root]) {
+    height: 100dvh;
+    min-height: 0;
+    overflow: hidden;
+  }
 }

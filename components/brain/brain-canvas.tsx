@@ -20,12 +20,6 @@ interface Edge {
   b: string;
 }
 
-interface Star {
-  x: number;
-  y: number;
-  z: number;
-}
-
 interface Pulse {
   a: string;
   b: string;
@@ -186,12 +180,9 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
     const observer = new ResizeObserver(resize);
     observer.observe(wrap);
 
-    // Background starfield for parallax depth.
-    const stars: Star[] = Array.from({ length: 200 }, () => ({
-      x: rand(620),
-      y: rand(460),
-      z: rand(620),
-    }));
+    // The background starfield now lives in the page-wide <Starfield /> layer
+    // (behind this transparent canvas), so the hero shares one continuous field
+    // with the rest of the site instead of drawing its own.
 
     // Camera rotation: gentle auto-spin plus eased mouse parallax.
     let yaw = 0;
@@ -418,7 +409,7 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
         ctx.clearRect(0, 0, width, vh);
       } else {
         ctx.globalCompositeOperation = "destination-out";
-        ctx.fillStyle = "rgba(0, 0, 0, 0.32)";
+        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
         ctx.fillRect(0, 0, width, vh);
       }
 
@@ -429,15 +420,6 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
 
       // Everything glowing is drawn additively for a neon bloom.
       ctx.globalCompositeOperation = "lighter";
-
-      // Starfield (far behind).
-      for (const s of stars) {
-        const pr = project(s);
-        const a = 0.05 + (1 - pr.depth) * 0.18;
-        ctx.fillStyle = `rgba(150, 180, 220, ${a})`;
-        const sz = pr.persp > 1 ? 1.6 : 1;
-        ctx.fillRect(pr.sx, pr.sy, sz, sz);
-      }
 
       // Project all nodes once; detect the hovered node (probe).
       const projOf = new Map<string, ReturnType<typeof project>>();
@@ -556,12 +538,13 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
         const breath = 1 + 0.12 * Math.sin(time * 0.05 + node.phase);
         const hot = hoverSet.has(node.name);
         const dim = hovered && !hot ? 0.4 : 1;
-        const base = Math.min(7, 2 + node.degree * 0.7) * p.persp * breath * (hot ? 1.4 : 1);
+        const base = Math.min(6, 2 + node.degree * 0.6) * p.persp * breath * (hot ? 1.4 : 1);
         const coreAlpha = (0.95 - 0.5 * t) * dim;
 
-        const glowR = base * (3.5 + flash * 4);
-        const glow = ctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, glowR);
-        glow.addColorStop(0, mix(t, (0.35 + flash * 0.5) * (1 - t * 0.5) * dim));
+        // Tighter halo so nodes read as crisp points instead of a hazy bloom.
+        const glowR = base * (2.2 + flash * 3.2);
+        const glow = ctx.createRadialGradient(p.sx, p.sy, base * 0.5, p.sx, p.sy, glowR);
+        glow.addColorStop(0, mix(t, (0.28 + flash * 0.45) * (1 - t * 0.5) * dim));
         glow.addColorStop(1, mix(t, 0));
         ctx.fillStyle = glow;
         ctx.beginPath();

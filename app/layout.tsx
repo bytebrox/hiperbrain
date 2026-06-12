@@ -1,17 +1,18 @@
 import type { Metadata, Viewport } from "next";
-import { Geist, Geist_Mono } from "next/font/google";
+import { IBM_Plex_Mono } from "next/font/google";
 import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
+import { BackgroundFX } from "@/components/background-fx";
 
-const geistSans = Geist({
-  variable: "--font-geist-sans",
+// Site-wide typewriter / terminal identity. IBM Plex Mono is a clean, readable
+// monospace with genuine typewriter heritage - a deliberate break from the
+// generic Geist default that ships with the Next.js starter.
+const plexMono = IBM_Plex_Mono({
+  variable: "--font-plex-mono",
   subsets: ["latin"],
-});
-
-const geistMono = Geist_Mono({
-  variable: "--font-geist-mono",
-  subsets: ["latin"],
+  weight: ["400", "500", "600", "700"],
+  display: "swap",
 });
 
 const TITLE = "hiperbrain - a brain that computes with 10,000-dimensional vectors";
@@ -77,9 +78,10 @@ export default function RootLayout({
   return (
     <html
       lang="en"
-      className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
+      className={`${plexMono.variable} h-full antialiased`}
     >
       <body className="flex min-h-dvh flex-col">
+        <BackgroundFX />
         <SiteHeader />
         <main className="flex min-h-0 flex-1 flex-col">{children}</main>
         <SiteFooter />

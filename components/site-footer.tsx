@@ -4,7 +4,7 @@ export function SiteFooter() {
   const year = new Date().getFullYear();
 
   return (
-    <footer className="border-t border-border/80 bg-background/70">
+    <footer className="relative z-10 bg-gradient-to-t from-background via-background/85 to-transparent">
       <div className="mx-auto flex max-w-6xl flex-col items-center gap-3 px-4 py-5 text-sm text-muted sm:flex-row sm:justify-between sm:px-6">
         <div className="flex items-center gap-2">
           <span className="font-mono text-foreground">hiperbrain</span>

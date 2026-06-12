@@ -185,10 +185,10 @@ export function CommandBar({ value, onValueChange, brain, onTeach }: CommandBarP
         spellCheck={false}
         placeholder={placeholder}
         aria-label="Ask or teach the brain"
-        className="w-full rounded-full border border-border bg-surface/70 px-6 py-4 text-center text-lg text-foreground outline-none transition-colors placeholder:text-muted/40 focus:border-accent/60"
+        className="w-full rounded-full border border-border bg-surface/70 px-4 py-3.5 text-center text-base text-foreground outline-none transition-colors placeholder:text-muted/40 focus:border-accent/60 sm:px-6 sm:py-4 sm:text-lg"
       />
 
-      <div className="mt-6 min-h-[5.5rem]">
+      <div className="mt-4 min-h-[4.5rem] sm:mt-6 sm:min-h-[5.5rem]">
         <Result brain={brain} cmd={cmd} pending={pending} taught={showTaught} onPick={pick} />
       </div>
 
