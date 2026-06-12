@@ -14,7 +14,10 @@ jobs:
         with:
           node-version: 20
           cache: npm
-      - run: npm ci
+      # Use `npm install` rather than `npm ci`: the lockfile is generated on
+      # Windows and omits Linux-only optional native deps (lightningcss/@emnapi),
+      # which makes the strict `npm ci` sync check fail on the Linux runner.
+      - run: npm install --no-audit --no-fund
       - name: Build @hiperbrain/core
         run: npm run build:core
       - name: Typecheck @hiperbrain/core

@@ -19,7 +19,9 @@ jobs:
           node-version: 20
           cache: npm
           registry-url: https://registry.npmjs.org
-      - run: npm ci
+      # See CI workflow: `npm ci` fails because the Windows-generated lockfile
+      # omits Linux-only optional native deps (lightningcss/@emnapi).
+      - run: npm install --no-audit --no-fund
       - name: Build @hiperbrain/core
         run: npm run build:core
       - name: Create release PR or publish to npm
