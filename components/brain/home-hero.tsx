@@ -7,7 +7,7 @@ import { BrainLoader } from "./brain-loader";
 import { CommandBar } from "./command-bar";
 
 export function HomeHero() {
-  const { brain, facts, status, teach, ready } = useCollectiveBrain();
+  const { brain, facts, status, teach, ready, resolvers } = useCollectiveBrain();
   const [value, setValue] = useState("");
   const stats = brain.stats();
   const loading = status === "loading" || (status === "ready" && !ready);
@@ -42,7 +42,13 @@ export function HomeHero() {
         </div>
 
         <div className="shrink-0">
-          <CommandBar value={value} onValueChange={setValue} brain={brain} onTeach={teach} />
+          <CommandBar
+            value={value}
+            onValueChange={setValue}
+            brain={brain}
+            resolvers={resolvers}
+            onTeach={teach}
+          />
         </div>
 
         <p className="mt-5 mb-1 shrink-0 text-center text-xs text-muted lg:mt-6 lg:mb-0">

@@ -23,6 +23,7 @@ export type Command =
   | { kind: "ask"; subject: string; relation: string }
   | { kind: "teach"; subject: string; relation: string; object: string }
   | { kind: "analogy"; from: string; value: string; to: string }
+  | { kind: "neighbors"; entity: string }
   | { kind: "invalid"; message: string };
 
 const ASK_HINT = 'Try: "capital of France"';
@@ -30,6 +31,10 @@ const TEACH_HINT = 'Try: "Madrid is the capital of Spain"';
 
 // "<A> is to <B> as <C>" with an optional trailing "is to" (the "?" is stripped).
 const ANALOGY_RE = /^(.+?)\s+is\s+to\s+(.+?)\s+as\s+(.+?)(?:\s+is\s+to)?\s*$/i;
+
+// "concepts like France" / "like France" / "similar to France" / "related to X".
+const NEIGHBORS_RE =
+  /^(?:concepts?\s+|things?\s+)?(?:like|similar\s+to|related\s+to|close\s+to)\s+(.+)$/i;
 
 // Possessive: "France's capital" / "France’s capital".
 const POSSESSIVE_RE = /^(.+?)['’]s\s+(.+)$/;
@@ -123,6 +128,13 @@ export function parseCommand(raw: string): Command {
     const value = analogy[2].trim();
     const to = analogy[3].trim();
     if (from && value && to) return { kind: "analogy", from, value, to };
+  }
+
+  // Semantic neighbours: "concepts like France".
+  const neighbors = NEIGHBORS_RE.exec(cleaned);
+  if (neighbors) {
+    const entity = stripArticle(neighbors[1].trim());
+    if (entity) return { kind: "neighbors", entity };
   }
 
   const text = stripQuestionPrefix(cleaned);

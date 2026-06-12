@@ -1,9 +1,9 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { type KnowledgeBrain } from "@hiperbrain/core";
+import { type KnowledgeBrain, recallConfidence } from "@hiperbrain/core";
 import { parseCommand } from "@/lib/parse-command";
-import type { TeachOutcome } from "@/lib/use-collective-brain";
+import type { BrainResolvers, TeachOutcome } from "@/lib/use-collective-brain";
 import {
   type Example,
   type ExampleKind,
@@ -18,6 +18,7 @@ interface CommandBarProps {
   value: string;
   onValueChange: (value: string) => void;
   brain: KnowledgeBrain;
+  resolvers: BrainResolvers | null;
   onTeach: (fact: { subject: string; relation: string; object: string }) => Promise<TeachOutcome>;
 }
 
@@ -36,7 +37,7 @@ const TYPE_PHRASES = [
 function kindOf(cmdKind: ReturnType<typeof parseCommand>["kind"]): ExampleKind | null {
   if (cmdKind === "ask") return "ask";
   if (cmdKind === "teach") return "teach";
-  if (cmdKind === "analogy") return "reason";
+  if (cmdKind === "analogy" || cmdKind === "neighbors") return "reason";
   return null;
 }
 
@@ -54,7 +55,7 @@ function usePrefersReducedMotion(): boolean {
   );
 }
 
-export function CommandBar({ value, onValueChange, brain, onTeach }: CommandBarProps) {
+export function CommandBar({ value, onValueChange, brain, resolvers, onTeach }: CommandBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
   const [taught, setTaught] = useState<TeachOutcome | null>(null);
@@ -157,7 +158,7 @@ export function CommandBar({ value, onValueChange, brain, onTeach }: CommandBarP
               type="button"
               onClick={() => fillTemplate(k)}
               title={KIND_HINT[k]}
-              className={`rounded-full border px-4 py-1.5 text-sm transition-colors ${
+              className={`rounded-sm border px-4 py-1.5 font-mono text-xs uppercase tracking-wider transition-colors ${
                 active
                   ? "border-accent/60 bg-accent/10 text-foreground"
                   : "border-border text-muted hover:text-foreground"
@@ -185,11 +186,18 @@ export function CommandBar({ value, onValueChange, brain, onTeach }: CommandBarP
         spellCheck={false}
         placeholder={placeholder}
         aria-label="Ask or teach the brain"
-        className="w-full rounded-full border border-border bg-surface/70 px-4 py-3.5 text-center text-base text-foreground outline-none transition-colors placeholder:text-muted/40 focus:border-accent/60 sm:px-6 sm:py-4 sm:text-lg"
+        className="w-full rounded-sm border border-border bg-surface/70 px-4 py-3.5 text-center text-base text-foreground outline-none transition-colors placeholder:text-muted/40 focus:border-accent/60 sm:px-6 sm:py-4 sm:text-lg"
       />
 
       <div className="mt-4 min-h-[4.5rem] sm:mt-6 sm:min-h-[5.5rem]">
-        <Result brain={brain} cmd={cmd} pending={pending} taught={showTaught} onPick={pick} />
+        <Result
+          brain={brain}
+          resolvers={resolvers}
+          cmd={cmd}
+          pending={pending}
+          taught={showTaught}
+          onPick={pick}
+        />
       </div>
 
       <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
@@ -198,7 +206,7 @@ export function CommandBar({ value, onValueChange, brain, onTeach }: CommandBarP
             key={ex.text}
             type="button"
             onClick={() => pick(ex.text)}
-            className="group rounded-full border border-border px-3 py-1 font-mono text-xs text-muted transition-colors hover:border-accent/50 hover:text-foreground"
+            className="group rounded-sm border border-border px-3 py-1 font-mono text-xs text-muted transition-colors hover:border-accent/50 hover:text-foreground"
           >
             <span className="mr-1.5 text-[10px] uppercase tracking-wide text-accent/70">
               {KIND_LABEL[ex.kind]}
@@ -211,7 +219,7 @@ export function CommandBar({ value, onValueChange, brain, onTeach }: CommandBarP
           onClick={() => setChips(pickExamples(6))}
           title="Show different examples"
           aria-label="Show different examples"
-          className="rounded-full border border-border px-2.5 py-1 text-xs text-muted transition-colors hover:border-accent/50 hover:text-foreground"
+          className="rounded-sm border border-border px-2.5 py-1 text-xs text-muted transition-colors hover:border-accent/50 hover:text-foreground"
         >
           &#x21bb;
         </button>
@@ -220,14 +228,47 @@ export function CommandBar({ value, onValueChange, brain, onTeach }: CommandBarP
   );
 }
 
+/** A small calibrated-confidence pill driven by the recall's noise-sigma. */
+function ConfidencePill({ sigma, score }: { sigma: number; score: number }) {
+  const level = sigma >= 8 ? "high" : sigma >= 4 ? "medium" : "low";
+  const tone =
+    level === "high"
+      ? "border-positive/40 text-positive"
+      : level === "medium"
+        ? "border-accent/40 text-accent"
+        : "border-border text-muted";
+  return (
+    <span
+      title={`signal ≈ ${sigma.toFixed(1)}σ above chance`}
+      className={`inline-flex items-center gap-1 rounded-sm border px-1.5 py-0.5 font-mono text-[10px] uppercase tracking-wider ${tone}`}
+    >
+      {level} · {(score * 100).toFixed(0)}%
+    </span>
+  );
+}
+
+function Suggestion({ query, onPick }: { query: string; onPick: (text: string) => void }) {
+  return (
+    <button
+      type="button"
+      onClick={() => onPick(query)}
+      className="mt-2 rounded-sm border border-accent/40 px-2.5 py-1 font-mono text-xs text-accent transition-colors hover:bg-accent/10"
+    >
+      did you mean: {query}?
+    </button>
+  );
+}
+
 function Result({
   brain,
+  resolvers,
   cmd,
   pending,
   taught,
   onPick,
 }: {
   brain: KnowledgeBrain;
+  resolvers: BrainResolvers | null;
   cmd: ReturnType<typeof parseCommand>;
   pending: boolean;
   taught: TeachOutcome | null;
@@ -265,7 +306,8 @@ function Result({
 
   if (cmd.kind === "analogy") {
     const matches = brain.analogy(cmd.value, cmd.from, cmd.to, 4);
-    if (matches.length === 0 || matches[0].score <= 0.1) {
+    const conf = recallConfidence(matches);
+    if (!conf.confident) {
       return (
         <p className="text-center text-sm text-muted">
           To reason by analogy, the brain needs to know both{" "}
@@ -275,16 +317,28 @@ function Result({
         </p>
       );
     }
+    // The relation the brain deduced purely from algebra, to make it explainable.
+    const recovered = brain.recoverRelation(cmd.value, cmd.from, 1)[0];
     const others = matches.slice(1).filter((m) => m.score > 0.05);
     return (
       <div className="text-center">
         <div className="text-3xl font-semibold tracking-tight text-accent">{matches[0].name}</div>
-        <div className="mt-1 text-sm text-muted">
-          {cmd.from} is to {cmd.value} as {cmd.to} is to{" "}
-          <span className="text-foreground">{matches[0].name}</span>
-          <span className="ml-2 font-mono text-xs opacity-70">{matches[0].score.toFixed(2)}</span>
+        <div className="mt-1 flex items-center justify-center gap-2 text-sm text-muted">
+          <span>
+            {cmd.from} is to {cmd.value} as {cmd.to} is to{" "}
+            <span className="text-foreground">{matches[0].name}</span>
+          </span>
+          <ConfidencePill sigma={conf.sigma} score={conf.score} />
         </div>
-        <div className="mt-2 text-xs text-muted/60">solved by vector algebra - no lookup</div>
+        <div className="mt-2 text-xs text-muted/60">
+          solved by vector algebra - no lookup
+          {recovered ? (
+            <>
+              {" · "}deduced relation:{" "}
+              <span className="text-muted">{recovered.name}</span>
+            </>
+          ) : null}
+        </div>
         {others.length > 0 ? (
           <div className="mt-1 text-xs text-muted/70">
             also considered: {others.map((m) => m.name).join(", ")}
@@ -294,16 +348,62 @@ function Result({
     );
   }
 
-  // Ask
-  const matches = brain.ask(cmd.subject, cmd.relation.toLowerCase(), 4);
-  if (matches.length === 0 || matches[0].score <= 0.12) {
+  if (cmd.kind === "neighbors") {
+    const entity =
+      resolvers?.concept.resolve(cmd.entity)?.name ?? cmd.entity;
+    const neighbors = brain.similarConcepts(entity, 6).filter((m) => m.score > 0.05);
+    if (neighbors.length === 0) {
+      return (
+        <p className="text-center text-sm text-muted">
+          The brain needs to know a few facts about{" "}
+          <span className="text-foreground">{cmd.entity}</span> before it can find
+          related concepts.
+        </p>
+      );
+    }
     return (
-      <p className="text-center text-sm text-muted">
-        The brain hasn&apos;t learned the {cmd.relation} of {cmd.subject} yet. Teach it:{" "}
-        <span className="text-foreground">
-          {cmd.relation} of {cmd.subject} is …
-        </span>
-      </p>
+      <div className="text-center">
+        <div className="text-xs uppercase tracking-wider text-muted">concepts like</div>
+        <div className="text-2xl font-semibold tracking-tight text-foreground">{entity}</div>
+        <div className="mt-3 flex flex-wrap items-center justify-center gap-2">
+          {neighbors.map((m) => (
+            <button
+              key={m.name}
+              type="button"
+              onClick={() => onPick(`concepts like ${m.name}`)}
+              title={`record similarity ${m.score.toFixed(2)}`}
+              className="rounded-sm border border-border px-2.5 py-1 font-mono text-xs text-muted transition-colors hover:border-accent/50 hover:text-foreground"
+            >
+              {m.name}
+              <span className="ml-1.5 opacity-50">{m.score.toFixed(2)}</span>
+            </button>
+          ))}
+        </div>
+        <div className="mt-2 text-xs text-muted/60">
+          nearest by holographic record - shared properties, no clustering step
+        </div>
+      </div>
+    );
+  }
+
+  // Ask
+  const relation = cmd.relation.toLowerCase();
+  const matches = brain.ask(cmd.subject, relation, 4);
+  const conf = recallConfidence(matches);
+  if (!conf.confident) {
+    // Fall back to typo-tolerant resolution: maybe the subject or relation is
+    // just misspelled. Only suggest a correction that actually has an answer.
+    const suggestion = suggestCorrection(brain, resolvers, cmd.subject, cmd.relation);
+    return (
+      <div className="text-center">
+        <p className="text-sm text-muted">
+          The brain hasn&apos;t learned the {cmd.relation} of {cmd.subject} yet. Teach it:{" "}
+          <span className="text-foreground">
+            {cmd.relation} of {cmd.subject} is …
+          </span>
+        </p>
+        {suggestion ? <Suggestion query={suggestion} onPick={onPick} /> : null}
+      </div>
     );
   }
 
@@ -311,9 +411,11 @@ function Result({
   return (
     <div className="text-center">
       <div className="text-3xl font-semibold tracking-tight text-accent">{matches[0].name}</div>
-      <div className="mt-1 text-sm text-muted">
-        the {cmd.relation} of {cmd.subject}
-        <span className="ml-2 font-mono text-xs opacity-70">{matches[0].score.toFixed(2)}</span>
+      <div className="mt-1 flex items-center justify-center gap-2 text-sm text-muted">
+        <span>
+          the {cmd.relation} of {cmd.subject}
+        </span>
+        <ConfidencePill sigma={conf.sigma} score={conf.score} />
       </div>
       {others.length > 0 ? (
         <div className="mt-2 text-xs text-muted/70">
@@ -322,6 +424,26 @@ function Result({
       ) : null}
     </div>
   );
+}
+
+/**
+ * Try to repair a failed ask by resolving the subject/relation to the closest
+ * known names. Returns a corrected query string only if the repair differs from
+ * the input and produces a confident answer; otherwise null.
+ */
+function suggestCorrection(
+  brain: KnowledgeBrain,
+  resolvers: BrainResolvers | null,
+  subject: string,
+  relation: string,
+): string | null {
+  if (!resolvers) return null;
+  const subj = resolvers.concept.resolve(subject)?.name ?? subject;
+  const rel = resolvers.relation.resolve(relation)?.name ?? relation;
+  if (subj === subject && rel === relation) return null;
+  const conf = recallConfidence(brain.ask(subj, rel.toLowerCase(), 2));
+  if (!conf.confident) return null;
+  return `${rel} of ${subj}`;
 }
 
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {

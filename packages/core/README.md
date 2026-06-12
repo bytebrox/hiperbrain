@@ -32,7 +32,27 @@ brain.ask("France", "capital");        // → [{ name: "Paris", score: ... }, ..
 brain.askSubject("capital", "Tokyo");  // → [{ name: "Japan", ... }]
 
 // "France is to Euro as Japan is to ___ ?"  (no rule tells it the relation)
-brain.analogy("Euro", "France", "Japan"); // → [{ name: "Yen", ... }]
+brain.analogy("Euro", "France", "Japan");  // → [{ name: "Yen", ... }]
+brain.recoverRelation("Euro", "France");   // → [{ name: "currency", ... }]  (explainable)
+brain.similarConcepts("France");           // → nearest entities by holographic record
+```
+
+### Calibrated confidence
+
+```ts
+import { recallConfidence } from "@hiperbrain/core";
+
+const matches = brain.ask("France", "capital");
+recallConfidence(matches); // → { score, confident, sigma }  (noise-sigma calibrated)
+```
+
+### Typo-tolerant resolution
+
+```ts
+import { ConceptResolver } from "@hiperbrain/core";
+
+const resolver = new ConceptResolver(["France", "Germany", "Japan"]);
+resolver.resolve("Frnace")?.name; // → "France"
 ```
 
 ### One-shot text classification
@@ -65,10 +85,13 @@ cosineSimilarity(bind(bound, b), a);      // ≈ 1  — recover `a`
 | `bind`, `bundle`, `permute` | The three core HDC operations |
 | `cosineSimilarity`, `hammingDistance`, `corrupt` | Compare and stress-test vectors |
 | `seededHypervector`, `randomHypervector` | Deterministic / random 10,000-d vectors |
+| `packBits`, `unpackBits`, `bindPacked`, `similarityPacked` | Bit-packed fast path (8x smaller; bind = XOR, similarity = popcount) |
 | `ItemMemory` | Cleanup memory (nearest atomic symbol), JSON-serializable |
 | `LetterCodebook`, `encodeText` | Character n-gram text encoder |
+| `ConceptResolver` | Typo-tolerant lookup of known names |
 | `Brain` | Records, analogy, classification, sequences, persistence |
-| `KnowledgeBrain` | Collective (subject, relation, object) associative memory |
+| `KnowledgeBrain` | Collective (subject, relation, object) memory with analogy, `recoverRelation`, `similarConcepts` |
+| `recallConfidence` | Noise-sigma calibrated confidence for any ranked result |
 
 ## Why HDC?
 
@@ -77,6 +100,14 @@ cosineSimilarity(bind(bound, b), a);      // ≈ 1  — recover `a`
 - **Fault tolerant** — flip thousands of bits and recall still works.
 - **Deterministic & explainable** — same input → same vector, every time.
 - **Tiny & portable** — no dependencies, no GPU, runs at the edge.
+
+## Hosted API
+
+This package runs fully offline and knows only what you teach it. If you want to
+reason over the **live collective brain** — every fact the community has taught
+on [hiperbrain.com](https://www.hiperbrain.com) — there is also a hosted,
+credit-metered HTTP API (`/api/v1/ask`, `/api/v1/teach`). See
+[hiperbrain.com/token](https://www.hiperbrain.com/token) for keys and docs.
 
 ## License
 

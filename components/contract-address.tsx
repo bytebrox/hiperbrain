@@ -32,7 +32,7 @@ export function ContractAddress({ address }: { address?: string }) {
       onClick={copy}
       title={`Copy contract address: ${address}`}
       aria-label="Copy contract address"
-      className="group flex items-center gap-2 rounded-md border border-border px-3 py-1.5 font-mono text-xs text-muted transition-colors hover:border-accent/50 hover:text-foreground"
+      className="group flex items-center gap-2 rounded-sm border border-border px-3 py-1.5 font-mono text-xs text-muted transition-colors hover:border-accent/50 hover:text-foreground"
     >
       <span className="uppercase tracking-wide text-accent/70">CA</span>
       <span>{abbreviate(address)}</span>

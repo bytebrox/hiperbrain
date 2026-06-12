@@ -44,13 +44,16 @@ export const EXAMPLES: Example[] = [
   { kind: "teach", text: "currency of Sweden is Krona" },
   { kind: "teach", text: "the painter of the Mona Lisa is Leonardo" },
 
-  // Reason - analogies it was never explicitly taught.
+  // Reason - analogies it was never explicitly taught, plus semantic neighbours.
   { kind: "reason", text: "USA is to Dollar as Japan is to ?" },
   { kind: "reason", text: "France is to Paris as Italy is to ?" },
   { kind: "reason", text: "Germany is to Berlin as Spain is to ?" },
   { kind: "reason", text: "Gold is to Au as Iron is to ?" },
   { kind: "reason", text: "Brazil is to Portuguese as Mexico is to ?" },
   { kind: "reason", text: "Japan is to Tokyo as Egypt is to ?" },
+  { kind: "reason", text: "concepts like France" },
+  { kind: "reason", text: "similar to Gold" },
+  { kind: "reason", text: "concepts like Japan" },
 ];
 
 /** Fisher-Yates shuffle (returns a new array). */

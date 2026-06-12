@@ -7,6 +7,7 @@ const NAV_LINKS = [
   { href: "/", label: "Home" },
   { href: "/logs", label: "Logs" },
   { href: "/docs", label: "Docs" },
+  { href: "/token", label: "Token" },
 ];
 
 function GitHubIcon({ className }: { className?: string }) {
@@ -30,14 +31,14 @@ export function SiteHeader() {
 
   return (
     <header className="sticky top-0 z-30 bg-gradient-to-b from-background via-background/85 to-transparent backdrop-blur-sm">
-      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between px-4 sm:px-6">
-        <Link href="/" className="flex items-center">
-          <span className="font-mono text-base font-semibold tracking-tight">
+      <div className="mx-auto flex h-16 max-w-6xl items-center justify-between gap-2 px-3 sm:px-6">
+        <Link href="/" className="flex shrink-0 items-center">
+          <span className="font-mono text-sm font-semibold tracking-tight sm:text-base">
             hiperbrain
           </span>
         </Link>
 
-        <nav className="flex items-center gap-0.5 sm:gap-1">
+        <nav className="flex items-center gap-0 sm:gap-1">
           {NAV_LINKS.map((link) => {
             const active =
               link.href === "/"
@@ -47,7 +48,7 @@ export function SiteHeader() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`rounded-md px-2.5 py-1.5 text-sm transition-colors sm:px-3 ${
+                className={`rounded-sm px-1.5 py-1.5 text-xs transition-colors sm:px-3 sm:text-sm ${
                   active
                     ? "bg-surface-2 text-foreground"
                     : "text-muted hover:text-foreground"
@@ -63,9 +64,9 @@ export function SiteHeader() {
             rel="noreferrer"
             aria-label="GitHub"
             title="GitHub"
-            className="ml-2 rounded-md p-1.5 text-muted transition-colors hover:text-foreground"
+            className="ml-0.5 rounded-sm p-1 text-muted transition-colors hover:text-foreground sm:ml-2 sm:p-1.5"
           >
-            <GitHubIcon className="h-5 w-5" />
+            <GitHubIcon className="h-[18px] w-[18px] sm:h-5 sm:w-5" />
           </a>
           <a
             href="https://x.com/hiperbrainx"
@@ -73,9 +74,9 @@ export function SiteHeader() {
             rel="noreferrer"
             aria-label="X"
             title="X"
-            className="rounded-md p-1.5 text-muted transition-colors hover:text-foreground"
+            className="rounded-sm p-1 text-muted transition-colors hover:text-foreground sm:p-1.5"
           >
-            <XIcon className="h-[18px] w-[18px]" />
+            <XIcon className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
           </a>
         </nav>
       </div>

@@ -24,12 +24,12 @@
 import {
   accumulate,
   bind,
-  cosineSimilarity,
   DIMENSIONS,
   finalizeAccumulator,
   type Hypervector,
   seededHypervector,
 } from "./hypervector";
+import { packBits, similarityPacked, type PackedHypervector } from "./bitpack";
 import { type Match } from "./itemMemory";
 
 export interface Fact {
@@ -49,6 +49,37 @@ interface RelationBucket {
   memo: Hypervector | null;
   subjects: Set<string>;
   objects: Set<string>;
+  /** Number of facts folded into this relation (its bundle load). */
+  count: number;
+}
+
+/**
+ * A calibrated read on how trustworthy a recall is. The cosine of two random
+ * bipolar vectors has standard deviation ~1/sqrt(D), so we express the top score
+ * in "noise sigmas" (`z`) and the gap to the runner-up as a margin. A result is
+ * only `confident` when it is both far above chance and clearly ahead of the
+ * next candidate.
+ */
+export interface Confidence {
+  /** Display value in [0, 1]. */
+  score: number;
+  /** Whether the recall is strong and unambiguous. */
+  confident: boolean;
+  /** Top score expressed in units of noise standard deviation. */
+  sigma: number;
+}
+
+/** Derive calibrated confidence from a ranked list of matches. */
+export function recallConfidence(matches: Match[], dimensions = DIMENSIONS): Confidence {
+  if (matches.length === 0) return { score: 0, confident: false, sigma: 0 };
+  const noise = 1 / Math.sqrt(dimensions);
+  const top = matches[0].score;
+  const second = matches[1]?.score ?? 0;
+  const sigma = top / noise;
+  const marginSigma = (top - second) / noise;
+  const confident = sigma >= 4 && marginSigma >= 2;
+  const score = Math.max(0, Math.min(1, (sigma - 2) / 10));
+  return { score, confident, sigma };
 }
 
 export class KnowledgeBrain {
@@ -57,6 +88,7 @@ export class KnowledgeBrain {
 
   private buckets = new Map<string, RelationBucket>();
   private symbolCache = new Map<string, Hypervector>();
+  private packedCache = new Map<string, PackedHypervector>();
   private concepts = new Set<string>();
   private factCount = 0;
 
@@ -88,6 +120,16 @@ export class KnowledgeBrain {
     return v;
   }
 
+  /** Bit-packed form of a symbol, cached for the fast cleanup path. */
+  private packedSymbol(name: string): PackedHypervector {
+    let p = this.packedCache.get(name);
+    if (!p) {
+      p = packBits(this.symbol(name));
+      this.packedCache.set(name, p);
+    }
+    return p;
+  }
+
   private bucket(relation: string): RelationBucket {
     let b = this.buckets.get(relation);
     if (!b) {
@@ -96,6 +138,7 @@ export class KnowledgeBrain {
         memo: null,
         subjects: new Set(),
         objects: new Set(),
+        count: 0,
       };
       this.buckets.set(relation, b);
     }
@@ -107,6 +150,7 @@ export class KnowledgeBrain {
     const bucket = this.bucket(relation);
     accumulate(bucket.acc, bind(this.symbol(subject), this.symbol(object)));
     bucket.memo = null;
+    bucket.count++;
     bucket.subjects.add(subject);
     bucket.objects.add(object);
     this.concepts.add(subject);
@@ -141,10 +185,19 @@ export class KnowledgeBrain {
     return bucket.memo;
   }
 
+  /**
+   * Rank candidate symbols by similarity to a noisy query and return the top k.
+   * Uses the bit-packed XOR/popcount path, which yields the same cosine ranking
+   * as the bipolar form but runs far faster over large candidate sets.
+   */
   private cleanup(query: Hypervector, names: Iterable<string>, k: number): Match[] {
+    const q = packBits(query);
     const matches: Match[] = [];
     for (const name of names) {
-      matches.push({ name, score: cosineSimilarity(query, this.symbol(name)) });
+      matches.push({
+        name,
+        score: similarityPacked(q, this.packedSymbol(name), this.dimensions),
+      });
     }
     matches.sort((a, b) => b.score - a.score);
     return matches.slice(0, k);
@@ -198,9 +251,56 @@ export class KnowledgeBrain {
     return this.cleanup(query, candidates, k);
   }
 
+  /**
+   * Recover the *relation* that connects `value` to entity `entity` - the role
+   * that the analogy machinery uses internally. `value ⊗ record(entity)`
+   * isolates the role vector, which we clean up against the known relations.
+   *
+   * This is what makes the analogy explainable: it shows that asking "Dollar is
+   * to USA as ___ is to Mexico" first deduces the relation ("currency") purely
+   * by algebra, with no rules and no lookup table.
+   */
+  recoverRelation(value: string, entity: string, k = 3): Match[] {
+    const rec = this.record(entity);
+    if (!rec) return [];
+    const query = bind(this.symbol(value), rec);
+    return this.cleanup(query, this.buckets.keys(), k);
+  }
+
+  /**
+   * Find entities whose holographic record is most similar to `entity`'s -
+   * "concepts like France". Because each record superimposes an entity's
+   * (relation ⊗ object) pairs, entities that share fillers (same currency,
+   * same continent, ...) end up close together with no explicit clustering step.
+   */
+  similarConcepts(entity: string, k = 5): Match[] {
+    const rec = this.record(entity);
+    if (!rec) return [];
+    const q = packBits(rec);
+    const matches: Match[] = [];
+    for (const other of this.recordAcc.keys()) {
+      if (other === entity) continue;
+      const orec = this.record(other);
+      if (!orec) continue;
+      matches.push({ name: other, score: similarityPacked(q, packBits(orec), this.dimensions) });
+    }
+    matches.sort((a, b) => b.score - a.score);
+    return matches.slice(0, k);
+  }
+
+  /** The bundle load (number of facts folded) of a relation, or 0 if unknown. */
+  relationSize(relation: string): number {
+    return this.buckets.get(relation)?.count ?? 0;
+  }
+
   /** Every value that has appeared as an object, sorted. */
   knownObjects(): string[] {
     return [...this.objects].sort();
+  }
+
+  /** Every entity that has a holographic record (i.e. has appeared as a subject). */
+  knownSubjects(): string[] {
+    return [...this.recordAcc.keys()].sort();
   }
 
   knownConcepts(): string[] {

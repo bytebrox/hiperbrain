@@ -83,7 +83,7 @@ export default function RootLayout({
       <body className="flex min-h-dvh flex-col">
         <BackgroundFX />
         <SiteHeader />
-        <main className="flex min-h-0 flex-1 flex-col">{children}</main>
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</main>
         <SiteFooter />
       </body>
     </html>

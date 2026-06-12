@@ -1,8 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
 import { HypervectorHeatmap } from "@/components/heatmap";
 import { useCollectiveBrain } from "@/lib/use-collective-brain";
+
+const PAGE_SIZE = 50;
 
 function relativeTime(ts?: number): string {
   if (!ts) return "";
@@ -18,7 +20,26 @@ function relativeTime(ts?: number): string {
 export default function LogsPage() {
   const { facts, brain, status } = useCollectiveBrain();
   const stats = brain.stats();
-  const recent = useMemo(() => [...facts].reverse().slice(0, 200), [facts]);
+  const [query, setQuery] = useState("");
+  const [page, setPage] = useState(0);
+
+  // All filtering and paging happens client-side - the facts are already loaded
+  // for the brain/heatmap, so this adds zero extra server or database load.
+  const filtered = useMemo(() => {
+    const newestFirst = [...facts].reverse();
+    const q = query.trim().toLowerCase();
+    if (!q) return newestFirst;
+    return newestFirst.filter(
+      (f) =>
+        f.subject.toLowerCase().includes(q) ||
+        f.relation.toLowerCase().includes(q) ||
+        f.object.toLowerCase().includes(q),
+    );
+  }, [facts, query]);
+
+  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  const safePage = Math.min(page, totalPages - 1);
+  const recent = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
   return (
     <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
@@ -56,22 +77,69 @@ export default function LogsPage() {
       ) : status === "error" ? (
         <p className="mt-8 text-sm text-negative">Could not load the activity log.</p>
       ) : (
-        <ul className="mt-2 divide-y divide-border">
-          {recent.map((fact, i) => (
-            <li
-              key={`${fact.subject}-${fact.relation}-${fact.object}-${i}`}
-              className="flex items-center justify-between gap-4 py-3 text-sm"
-            >
-              <span className="font-mono">
-                <span className="text-muted">the</span> {fact.relation}{" "}
-                <span className="text-muted">of</span> {fact.subject}{" "}
-                <span className="text-muted">is</span>{" "}
-                <span className="text-accent">{fact.object}</span>
+        <>
+          <div className="mt-6 flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+            <input
+              value={query}
+              onChange={(e) => {
+                setQuery(e.target.value);
+                setPage(0);
+              }}
+              spellCheck={false}
+              placeholder="search facts… (subject, relation or value)"
+              aria-label="Search the activity log"
+              className="w-full rounded-sm border border-border bg-surface/70 px-3 py-2 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted/40 focus:border-accent/60 sm:max-w-sm"
+            />
+            <span className="shrink-0 font-mono text-xs text-muted">
+              {filtered.length.toLocaleString()} {query.trim() ? "matches" : "facts"}
+            </span>
+          </div>
+
+          {recent.length === 0 ? (
+            <p className="mt-8 text-sm text-muted">No facts match “{query.trim()}”.</p>
+          ) : (
+            <ul className="mt-2 divide-y divide-border">
+              {recent.map((fact, i) => (
+                <li
+                  key={`${fact.subject}-${fact.relation}-${fact.object}-${safePage}-${i}`}
+                  className="flex items-center justify-between gap-4 py-3 text-sm"
+                >
+                  <span className="font-mono">
+                    <span className="text-muted">the</span> {fact.relation}{" "}
+                    <span className="text-muted">of</span> {fact.subject}{" "}
+                    <span className="text-muted">is</span>{" "}
+                    <span className="text-accent">{fact.object}</span>
+                  </span>
+                  <span className="shrink-0 text-xs text-muted">{relativeTime(fact.ts)}</span>
+                </li>
+              ))}
+            </ul>
+          )}
+
+          {totalPages > 1 ? (
+            <div className="mt-6 flex items-center justify-center gap-4 font-mono text-xs">
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.max(0, p - 1))}
+                disabled={safePage === 0}
+                className="rounded-sm border border-border px-3 py-1.5 uppercase tracking-wider text-muted transition-colors hover:border-accent/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-border disabled:hover:text-muted"
+              >
+                ← Prev
+              </button>
+              <span className="text-muted">
+                Page <span className="text-foreground">{safePage + 1}</span> / {totalPages}
               </span>
-              <span className="shrink-0 text-xs text-muted">{relativeTime(fact.ts)}</span>
-            </li>
-          ))}
-        </ul>
+              <button
+                type="button"
+                onClick={() => setPage((p) => Math.min(totalPages - 1, p + 1))}
+                disabled={safePage >= totalPages - 1}
+                className="rounded-sm border border-border px-3 py-1.5 uppercase tracking-wider text-muted transition-colors hover:border-accent/50 hover:text-foreground disabled:cursor-not-allowed disabled:opacity-30 disabled:hover:border-border disabled:hover:text-muted"
+              >
+                Next →
+              </button>
+            </div>
+          ) : null}
+        </>
       )}
     </div>
   );

@@ -1,8 +1,14 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { type Fact, KnowledgeBrain } from "@hiperbrain/core";
+import { ConceptResolver, type Fact, KnowledgeBrain } from "@hiperbrain/core";
 import { getBrowserClient } from "@/lib/supabase-browser";
+
+/** Typo-tolerant resolvers for concept and relation names ("Frnace" -> "France"). */
+export interface BrainResolvers {
+  concept: ConceptResolver;
+  relation: ConceptResolver;
+}
 
 export type TimedFact = Fact & { ts?: number };
 
@@ -112,6 +118,40 @@ export function useCollectiveBrain() {
     };
   }, [facts]);
 
+  // A typo-tolerant resolver index over every known name. Encoding thousands of
+  // names is expensive, so we build it after the brain is ready and in small
+  // chunks across frames - relations (a small set) are available immediately,
+  // concepts fill in shortly after without blocking the animation.
+  const [resolvers, setResolvers] = useState<BrainResolvers | null>(null);
+
+  useEffect(() => {
+    if (!ready) return;
+    let cancelled = false;
+    // Build off the render path (deferred): relations are ready immediately, then
+    // concept names fill into the same resolver instance in small batches across
+    // frames so the index build never blocks the animation.
+    let timer = setTimeout(() => {
+      if (cancelled) return;
+      const concept = new ConceptResolver([], { dimensions: 2048 });
+      const relation = new ConceptResolver(brain.knownRelations(), { dimensions: 2048 });
+      setResolvers({ concept, relation });
+
+      const names = brain.knownConcepts();
+      let i = 0;
+      const step = () => {
+        if (cancelled) return;
+        const end = Math.min(i + 120, names.length);
+        for (; i < end; i++) concept.add(names[i]);
+        if (i < names.length) timer = setTimeout(step, 16);
+      };
+      timer = setTimeout(step, 0);
+    }, 300);
+    return () => {
+      cancelled = true;
+      clearTimeout(timer);
+    };
+  }, [ready, brain]);
+
   const teach = useCallback(
     async (fact: Fact): Promise<TeachOutcome> => {
       try {
@@ -137,5 +177,5 @@ export function useCollectiveBrain() {
     [addFact],
   );
 
-  return { facts, brain, status, capacity, teach, ready };
+  return { facts, brain, status, capacity, teach, ready, resolvers };
 }
