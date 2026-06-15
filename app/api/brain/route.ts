@@ -11,7 +11,7 @@ import { NextResponse } from "next/server";
 import { validateFact } from "@/lib/server/moderation";
 import { getFactsCached, invalidateFactsCache, MAX_FACTS } from "@/lib/server/store";
 import { checkRateLimit } from "@/lib/server/ratelimit";
-import { landedActive, teachFact } from "@/lib/server/teach";
+import { landedActive, parseSourceUrl, teachFact } from "@/lib/server/teach";
 
 export const dynamic = "force-dynamic";
 
@@ -61,7 +61,8 @@ export async function POST(request: Request) {
 
   // Verify, resolve contradictions and store. Only confident-false is rejected;
   // conflicts on single-valued relations are adjudicated rather than blocked.
-  const outcome = await teachFact(result.fact, { source: "community" });
+  const sourceUrl = parseSourceUrl((body as { source_url?: unknown }).source_url);
+  const outcome = await teachFact(result.fact, { source: "community", sourceUrl });
   if (landedActive(outcome)) invalidateFactsCache();
 
   switch (outcome.kind) {

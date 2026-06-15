@@ -11,6 +11,16 @@ interface AdminFact {
   source: string;
   owner: string | null;
   createdAt: number;
+  sourceUrl: string | null;
+  verifiedAt: number | null;
+}
+
+function hostOf(url: string): string {
+  try {
+    return new URL(url).hostname.replace(/^www\./, "");
+  } catch {
+    return "source";
+  }
 }
 
 type Phase = "loading" | "disabled" | "login" | "dashboard";
@@ -269,6 +279,22 @@ export function AdminView() {
                   <span>{r.source}</span>
                   {r.owner ? <span className="truncate">· {r.owner.slice(0, 8)}…</span> : null}
                   <span>· {new Date(r.createdAt).toLocaleDateString()}</span>
+                  {r.verifiedAt ? (
+                    <span className="text-positive/80" title={`verified ${new Date(r.verifiedAt).toLocaleString()}`}>
+                      · verified
+                    </span>
+                  ) : null}
+                  {r.sourceUrl ? (
+                    <a
+                      href={r.sourceUrl}
+                      target="_blank"
+                      rel="noopener noreferrer nofollow"
+                      className="truncate text-accent transition-colors hover:underline"
+                      title={r.sourceUrl}
+                    >
+                      · {hostOf(r.sourceUrl)} ↗
+                    </a>
+                  ) : null}
                 </div>
               </div>
               <div className="flex shrink-0 items-center gap-1.5">

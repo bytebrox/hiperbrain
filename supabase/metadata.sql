@@ -55,6 +55,12 @@ create index if not exists facts_sr_active_idx
 create index if not exists facts_status_created_idx
   on public.facts (status, created_at);
 
+-- --- Provenance (optional citation) ----------------------------------------
+-- A fact may carry the URL it came from and the time a checker confirmed it.
+-- Both are optional and additive: existing facts simply stay null.
+alter table public.facts add column if not exists source_url text;
+alter table public.facts add column if not exists verified_at timestamptz;
+
 -- --- Realtime: ship full rows on UPDATE/DELETE -----------------------------
 -- The browser brain listens to live changes and must drop a fact when it stops
 -- being active (superseded/disputed) or is deleted. Without REPLICA IDENTITY

@@ -36,6 +36,12 @@ export interface BenchmarkAnalogy {
 
 export type BenchmarkItem = BenchmarkAsk | BenchmarkAnalogy;
 
+/**
+ * Dataset version. Bump this whenever the BENCHMARK items below change, so a
+ * published score is always tied to a specific, reproducible question set.
+ */
+export const BENCHMARK_VERSION = "v1";
+
 export const BENCHMARK: BenchmarkItem[] = [
   // --- Capitals (seed-guaranteed) ---
   { kind: "ask", subject: "France", relation: "capital", expected: "Paris" },
@@ -104,10 +110,21 @@ export interface BenchmarkSummary {
   hallucinationRate: number;
   /** answered / total. */
   coverage: number;
+  /** Dataset version the score was produced against. */
+  version: string;
+  /** Total wall-clock time to score every item (ms). */
+  latencyMsTotal: number;
+  /** Average time per query (ms) - shows recall is pure, fast vector algebra. */
+  latencyMsAvg: number;
 }
 
 function eq(a: string | null, b: string): boolean {
   return !!a && a.trim().toLowerCase() === b.trim().toLowerCase();
+}
+
+/** High-resolution clock that works in the browser and in Node. */
+function now(): number {
+  return typeof performance !== "undefined" ? performance.now() : Date.now();
 }
 
 /** Score a single benchmark item against the live brain. Pure and deterministic. */
@@ -130,7 +147,9 @@ export function runBenchmark(brain: KnowledgeBrain, items: BenchmarkItem[] = BEN
   results: ItemResult[];
   summary: BenchmarkSummary;
 } {
+  const start = now();
   const results = items.map((item) => scoreItem(brain, item));
+  const latencyMsTotal = now() - start;
   const total = results.length;
   const correct = results.filter((r) => r.status === "correct").length;
   const confidentWrong = results.filter((r) => r.status === "wrong").length;
@@ -147,6 +166,9 @@ export function runBenchmark(brain: KnowledgeBrain, items: BenchmarkItem[] = BEN
     precision: answered ? correct / answered : 0,
     hallucinationRate: total ? confidentWrong / total : 0,
     coverage: total ? answered / total : 0,
+    version: BENCHMARK_VERSION,
+    latencyMsTotal,
+    latencyMsAvg: total ? latencyMsTotal / total : 0,
   };
   return { results, summary };
 }

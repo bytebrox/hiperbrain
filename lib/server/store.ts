@@ -48,6 +48,10 @@ export interface FactMeta {
   confidence?: number | null;
   note?: string | null;
   supersededBy?: number | null;
+  /** Optional citation URL the fact came from. */
+  sourceUrl?: string | null;
+  /** Epoch ms when the fact was verified (set when the checker confirms it). */
+  verifiedAt?: number | null;
 }
 
 /** A stored fact carries a creation timestamp and (when known) its row id/status. */
@@ -76,6 +80,8 @@ export interface AdminFact {
   source: FactSource;
   owner: string | null;
   createdAt: number;
+  sourceUrl: string | null;
+  verifiedAt: number | null;
 }
 
 export interface AdminQuery {
@@ -238,6 +244,8 @@ class SupabaseStore implements FactStore {
       confidence: meta.confidence ?? null,
       note: meta.note ?? null,
       superseded_by: meta.supersededBy ?? null,
+      source_url: meta.sourceUrl ?? null,
+      verified_at: meta.verifiedAt ? new Date(meta.verifiedAt).toISOString() : null,
     };
 
     const { data, error } = await this.client
@@ -310,7 +318,9 @@ class SupabaseStore implements FactStore {
   async listAll(opts: AdminQuery): Promise<AdminListResult> {
     let q = this.client
       .from("facts")
-      .select("id,subject,relation,object,status,source,owner,created_at", { count: "exact" });
+      .select("id,subject,relation,object,status,source,owner,created_at,source_url,verified_at", {
+        count: "exact",
+      });
 
     if (opts.status && opts.status !== "all") q = q.eq("status", opts.status);
 
@@ -329,6 +339,8 @@ class SupabaseStore implements FactStore {
     const rows = ((data ?? []) as (FactRow & {
       source: FactSource;
       owner: string | null;
+      source_url: string | null;
+      verified_at: string | null;
     })[]).map((r) => ({
       id: r.id,
       subject: r.subject,
@@ -338,6 +350,8 @@ class SupabaseStore implements FactStore {
       source: r.source,
       owner: r.owner,
       createdAt: Date.parse(r.created_at),
+      sourceUrl: r.source_url,
+      verifiedAt: r.verified_at ? Date.parse(r.verified_at) : null,
     }));
     return { rows, total: count ?? rows.length };
   }
@@ -379,6 +393,8 @@ interface MemoryRow {
   confidence: number | null;
   note: string | null;
   supersededBy: number | null;
+  sourceUrl: string | null;
+  verifiedAt: number | null;
   ts: number;
 }
 
@@ -431,6 +447,8 @@ export class MemoryStore implements FactStore {
       confidence: meta.confidence ?? null,
       note: meta.note ?? null,
       supersededBy: meta.supersededBy ?? null,
+      sourceUrl: meta.sourceUrl ?? null,
+      verifiedAt: meta.verifiedAt ?? null,
       ts: Date.now(),
     });
     return { status: "added", total: this.rows.length, id };
@@ -495,6 +513,8 @@ export class MemoryStore implements FactStore {
       source: r.source,
       owner: r.owner,
       createdAt: r.ts,
+      sourceUrl: r.sourceUrl,
+      verifiedAt: r.verifiedAt,
     }));
     return { rows, total: filtered.length };
   }

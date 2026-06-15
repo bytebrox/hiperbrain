@@ -530,12 +530,21 @@ confident = sigma >= 4 && margin >= 2`}
         capacity-limited, lossy behaviour as biological associative memory.
       </p>
       <p>
-        To keep recall sharp, hiperbrain <Term>buckets knowledge by relation</Term>:
-        all <Mono>capital-of</Mono> facts share one vector, all{" "}
-        <Mono>currency-of</Mono> facts another, and so on. Each memory therefore
-        only ever competes with facts of the same kind, which keeps similarity
-        scores clean and answers confident far longer than a single global bundle
-        would allow.
+        To keep recall sharp, hiperbrain stores knowledge two ways at once. Facts
+        are <Term>bucketed by relation</Term> - all <Mono>capital-of</Mono> facts
+        share one vector, all <Mono>currency-of</Mono> facts another - so a memory
+        never competes with facts of a different kind. <em>And</em> every subject
+        keeps its own <Term>holographic record</Term> that superimposes just{" "}
+        <em>its</em> <Mono>(relation ⊗ object)</Mono> pairs.
+      </p>
+      <p>
+        When you ask a question, recall <em>prefers the subject&apos;s record</em>
+        - whose load is only the handful of facts about that one subject - and
+        falls back to the relation bundle only when that signal is weak, keeping
+        whichever is stronger. That is why <Mono>currency of France</Mono> stays
+        razor-sharp even when the brain knows thousands of currencies: the
+        competing load is facts-about-France, not every-fact-with-a-currency. The
+        two paths live in <Mono>KnowledgeBrain.ask()</Mono>.
       </p>
     </>
   ),
@@ -939,18 +948,25 @@ recallConfidence(brain.ask("France", "capital")); // -> { confident, sigma }`}
 
       <p className="mt-4">
         <Term>POST /api/v1/teach</Term> — add a fact. Costs 10 credits, but only
-        when the fact is genuinely new and passes verification — duplicates and
-        rejected facts are refunded automatically.
+        when the fact is genuinely new and lands active in the brain — duplicates,
+        rejected claims and anything held back for review are refunded
+        automatically, so you only pay for knowledge that actually enters recall.
+        An optional <Mono>source_url</Mono> attaches a citation, stored as
+        provenance with the fact.
       </p>
       <pre className="mt-2 overflow-x-auto rounded-lg border border-border bg-surface-2/50 p-4 font-mono text-xs text-foreground">
-{`// Request body
-{ "subject": "Slovenia", "relation": "capital", "object": "Ljubljana" }
+{`// Request body (source_url is optional)
+{ "subject": "Slovenia", "relation": "capital", "object": "Ljubljana",
+  "source_url": "https://en.wikipedia.org/wiki/Ljubljana" }
 
 // 201 Created — fact stored, 10 credits charged
 { "status": "added", "fact": {...}, "total": 6116, "remaining": 989 }
 
 // 200 OK — already known, charge refunded
-{ "status": "duplicate", "fact": {...}, "total": 6116, "remaining": 999 }`}
+{ "status": "duplicate", "fact": {...}, "total": 6116, "remaining": 999 }
+
+// 200 OK — uncertain/unverifiable, held for review, charge refunded
+{ "status": "disputed", "fact": {...}, "reason": "...", "remaining": 999 }`}
       </pre>
 
       <p className="mt-4">
@@ -1009,7 +1025,9 @@ recallConfidence(brain.ask("France", "capital")); // -> { confident, sigma }`}
         taught fact carries <Term>provenance</Term> - where it came from
         (<Mono>seed</Mono>, <Mono>community</Mono> or the metered <Mono>api</Mono>),
         who taught it (the wallet, for API writes), a fact-checker{" "}
-        <Term>verdict</Term> and a numeric <Term>confidence</Term>. None of this
+        <Term>verdict</Term> and a numeric <Term>confidence</Term>. An optional
+        citation URL (<Mono>source_url</Mono>) and the moment a checker confirmed
+        the claim (<Mono>verified_at</Mono>) can ride along too. None of this
         touches the vectors; it lives alongside the triple so the knowledge can be
         audited.
       </p>
@@ -1101,6 +1119,13 @@ recallConfidence(brain.ask("France", "capital")); // -> { confident, sigma }`}
         fabricate a plausible answer under pressure. When the signal is weak it
         abstains, and the benchmark makes that behaviour measurable instead of a
         marketing claim.
+      </p>
+      <p className="mt-4">
+        Alongside the scores the page reports the <Term>dataset version</Term>,
+        how many facts the brain currently holds, and the wall-clock{" "}
+        <Term>latency</Term> per query - typically a fraction of a millisecond,
+        because recall runs entirely in your browser with no server round-trip and
+        no model call.
       </p>
     </>
   ),

@@ -14,7 +14,7 @@
 import { NextResponse } from "next/server";
 import { validateFact } from "@/lib/server/moderation";
 import { invalidateFactsCache, MAX_FACTS } from "@/lib/server/store";
-import { landedActive, teachFact } from "@/lib/server/teach";
+import { landedActive, parseSourceUrl, teachFact } from "@/lib/server/teach";
 import {
   bearerToken,
   COST_TEACH,
@@ -52,7 +52,8 @@ export async function POST(request: Request) {
   }
 
   const owner = await walletForKey(key);
-  const outcome = await teachFact(result.fact, { source: "api", owner });
+  const sourceUrl = parseSourceUrl((body as { source_url?: unknown }).source_url);
+  const outcome = await teachFact(result.fact, { source: "api", owner, sourceUrl });
 
   if (!landedActive(outcome)) {
     await refundCredits(key, COST_TEACH);

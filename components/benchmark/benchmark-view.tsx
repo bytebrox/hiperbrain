@@ -12,6 +12,12 @@ function pct(value: number): string {
   return `${Math.round(value * 100)}%`;
 }
 
+function ms(value: number): string {
+  return value >= 1 ? `${value.toFixed(1)} ms` : `${value.toFixed(2)} ms`;
+}
+
+const RUN_DATE = new Date().toISOString().slice(0, 10);
+
 function questionText(item: BenchmarkItem): string {
   return item.kind === "ask"
     ? `the ${item.relation} of ${item.subject}`
@@ -19,7 +25,7 @@ function questionText(item: BenchmarkItem): string {
 }
 
 export function BenchmarkView() {
-  const { brain, status, ready } = useCollectiveBrain();
+  const { brain, status, ready, facts } = useCollectiveBrain();
   const loading = status === "loading" || (status === "ready" && !ready);
 
   const { results, summary } = useMemo(
@@ -75,6 +81,20 @@ export function BenchmarkView() {
             hasn&apos;t been taught show up as abstentions, not errors.
           </p>
 
+          <dl className="mt-4 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px] text-muted/80">
+            <Meta label="dataset" value={`${summary.version} · ${summary.total} questions`} />
+            <Meta label="brain" value={`${facts.length.toLocaleString()} facts loaded`} />
+            <Meta
+              label="speed"
+              value={`${ms(summary.latencyMsAvg)}/query · ${ms(summary.latencyMsTotal)} total`}
+            />
+            <Meta label="run" value={RUN_DATE} />
+          </dl>
+          <p className="mt-2 text-[11px] text-muted/60">
+            Latency is wall-clock recall in your browser - no server round-trip, no model
+            call. Every answer is pure hypervector algebra.
+          </p>
+
           <ul className="mt-6 divide-y divide-border border-y border-border">
             {results.map((r, i) => (
               <ResultRow key={`${questionText(r.item)}-${i}`} result={r} />
@@ -82,6 +102,15 @@ export function BenchmarkView() {
           </ul>
         </>
       )}
+    </div>
+  );
+}
+
+function Meta({ label, value }: { label: string; value: string }) {
+  return (
+    <div className="flex items-baseline gap-1.5">
+      <dt className="uppercase tracking-wider text-muted/50">{label}</dt>
+      <dd className="text-muted">{value}</dd>
     </div>
   );
 }

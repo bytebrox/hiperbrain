@@ -37,6 +37,24 @@ export type TeachResult =
   | { kind: "duplicate"; fact: Fact; total: number }
   | { kind: "full"; total: number };
 
+/**
+ * Validate an optional citation URL from a request body. Returns a normalised
+ * http(s) URL, or null when absent/invalid (the source is always optional, so a
+ * bad value is simply dropped rather than failing the whole submission).
+ */
+export function parseSourceUrl(input: unknown): string | null {
+  if (typeof input !== "string") return null;
+  const trimmed = input.trim();
+  if (!trimmed || trimmed.length > 500) return null;
+  try {
+    const url = new URL(trimmed);
+    if (url.protocol !== "http:" && url.protocol !== "https:") return null;
+    return url.toString();
+  } catch {
+    return null;
+  }
+}
+
 /** Did this outcome put a new active fact into the shared brain? */
 export function landedActive(result: TeachResult): boolean {
   return result.kind === "added" || result.kind === "replaced";
@@ -56,7 +74,7 @@ function confidenceFor(verdict: string | null): number | null {
 
 export async function teachFact(
   rawFact: Fact,
-  meta: { source: FactSource; owner?: string | null },
+  meta: { source: FactSource; owner?: string | null; sourceUrl?: string | null },
 ): Promise<TeachResult> {
   // Normalise the relation onto its canonical form ("money" -> "currency") so
   // the store, contradiction checks and recall all agree on one spelling.
@@ -72,7 +90,15 @@ export async function teachFact(
     verifyReason = check.reason;
   }
   const confidence = confidenceFor(verdict);
-  const base = { source: meta.source, owner: meta.owner ?? null, verdict, confidence };
+  const base = {
+    source: meta.source,
+    owner: meta.owner ?? null,
+    verdict,
+    confidence,
+    sourceUrl: meta.sourceUrl ?? null,
+    // Stamp the verification time only when the checker actually confirmed it.
+    verifiedAt: verdict === "true" ? Date.now() : null,
+  };
 
   // Hold-for-review gate: when verification is ON, only a confident "true" is
   // trusted into the active brain automatically. Anything "uncertain" - whether

@@ -43,6 +43,24 @@ describe("MemoryStore", () => {
     });
   });
 
+  it("keeps optional provenance (sourceUrl, verifiedAt) on a fact", async () => {
+    const store = new MemoryStore();
+    const t = Date.now();
+    await store.addFact(
+      { subject: "France", relation: "capital", object: "Paris" },
+      { sourceUrl: "https://example.com/x", verifiedAt: t },
+    );
+    const { rows } = await store.listAll({ status: "all", limit: 10, offset: 0 });
+    expect(rows[0]).toMatchObject({ sourceUrl: "https://example.com/x", verifiedAt: t });
+
+    const plain = await store.addFact({ subject: "Japan", relation: "capital", object: "Tokyo" });
+    expect(plain.status).toBe("added");
+    const { rows: all } = await store.listAll({ status: "all", limit: 10, offset: 0 });
+    const japan = all.find((r) => r.subject === "Japan");
+    expect(japan?.sourceUrl).toBeNull();
+    expect(japan?.verifiedAt).toBeNull();
+  });
+
   it("listFacts never returns superseded or disputed facts", async () => {
     const store = new MemoryStore();
     await store.addFact({ subject: "A", relation: "capital", object: "x" }, { status: "active" });
