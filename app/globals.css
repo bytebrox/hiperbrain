@@ -137,6 +137,29 @@ body {
   scrollbar-color: var(--border) transparent;
 }
 
+/* Screen-print loader: flat cyan halftone dots that swell in a diagonal wave,
+   echoing the brain canvas's dot-screen instead of a glowing neon spinner. */
+@keyframes halftone-dot {
+  0%,
+  100% {
+    transform: scale(0.35);
+    opacity: 0.2;
+  }
+  45% {
+    transform: scale(1);
+    opacity: 1;
+  }
+}
+.halftone-dot {
+  animation: halftone-dot 1.5s cubic-bezier(0.4, 0, 0.2, 1) infinite both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .halftone-dot {
+    animation: none;
+    opacity: 0.7;
+  }
+}
+
 /* Route-change transition: each new page mounts with a soft fade + tiny rise,
    keyed by pathname so it replays on every navigation. */
 @keyframes page-enter {
