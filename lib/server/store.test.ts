@@ -61,6 +61,46 @@ describe("MemoryStore", () => {
     expect(japan?.verifiedAt).toBeNull();
   });
 
+  it("approve activates a held fact and supersedes a conflicting active value (functional)", async () => {
+    const store = new MemoryStore();
+    const paris = await store.addFact(
+      { subject: "France", relation: "capital", object: "Paris" },
+      { status: "active" },
+    );
+    const lyon = await store.addFact(
+      { subject: "France", relation: "capital", object: "Lyon" },
+      { status: "disputed" },
+    );
+
+    const ok = await store.approve(lyon.id!);
+    expect(ok).toBe(true);
+
+    const active = await store.listFacts();
+    expect(active.some((f) => f.object === "Lyon")).toBe(true);
+    expect(active.some((f) => f.object === "Paris")).toBe(false);
+    expect((await store.findActiveBySR("France", "capital"))?.object).toBe("Lyon");
+    // The displaced value is superseded, pointing at the approved row.
+    const { rows } = await store.listAll({ status: "all", limit: 10, offset: 0 });
+    const parisRow = rows.find((r) => r.id === paris.id);
+    expect(parisRow?.status).toBe("superseded");
+  });
+
+  it("approve does NOT supersede other values for a multi-valued relation", async () => {
+    const store = new MemoryStore();
+    await store.addFact(
+      { subject: "Canada", relation: "language", object: "English" },
+      { status: "active" },
+    );
+    const french = await store.addFact(
+      { subject: "Canada", relation: "language", object: "French" },
+      { status: "disputed" },
+    );
+    await store.approve(french.id!);
+
+    const active = await store.listFacts();
+    expect(active.filter((f) => f.subject === "Canada").length).toBe(2);
+  });
+
   it("listFacts never returns superseded or disputed facts", async () => {
     const store = new MemoryStore();
     await store.addFact({ subject: "A", relation: "capital", object: "x" }, { status: "active" });

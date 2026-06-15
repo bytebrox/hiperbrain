@@ -40,7 +40,7 @@ export type BenchmarkItem = BenchmarkAsk | BenchmarkAnalogy;
  * Dataset version. Bump this whenever the BENCHMARK items below change, so a
  * published score is always tied to a specific, reproducible question set.
  */
-export const BENCHMARK_VERSION = "v1";
+export const BENCHMARK_VERSION = "v2";
 
 export const BENCHMARK: BenchmarkItem[] = [
   // --- Capitals (seed-guaranteed) ---
@@ -82,6 +82,34 @@ export const BENCHMARK: BenchmarkItem[] = [
   { kind: "ask", subject: "China", relation: "currency", expected: "Yuan" },
   { kind: "ask", subject: "Russia", relation: "currency", expected: "Ruble" },
   { kind: "ask", subject: "Brazil", relation: "currency", expected: "Real" },
+  // --- Harder capitals: a well-fed brain should know these; otherwise it abstains ---
+  { kind: "ask", subject: "Norway", relation: "capital", expected: "Oslo" },
+  { kind: "ask", subject: "Argentina", relation: "capital", expected: "Buenos Aires" },
+  { kind: "ask", subject: "Turkey", relation: "capital", expected: "Ankara" },
+  { kind: "ask", subject: "Thailand", relation: "capital", expected: "Bangkok" },
+  { kind: "ask", subject: "Poland", relation: "capital", expected: "Warsaw" },
+  { kind: "ask", subject: "Netherlands", relation: "capital", expected: "Amsterdam" },
+  { kind: "ask", subject: "Kenya", relation: "capital", expected: "Nairobi" },
+  { kind: "ask", subject: "Sweden", relation: "capital", expected: "Stockholm" },
+  // --- Continents (single-word, unambiguous) ---
+  { kind: "ask", subject: "Japan", relation: "continent", expected: "Asia" },
+  { kind: "ask", subject: "India", relation: "continent", expected: "Asia" },
+  { kind: "ask", subject: "Egypt", relation: "continent", expected: "Africa" },
+  // --- Element symbols: short, globally canonical, no spelling ambiguity ---
+  { kind: "ask", subject: "Oxygen", relation: "symbol", expected: "O" },
+  { kind: "ask", subject: "Hydrogen", relation: "symbol", expected: "H" },
+  { kind: "ask", subject: "Sodium", relation: "symbol", expected: "Na" },
+  { kind: "ask", subject: "Iron", relation: "symbol", expected: "Fe" },
+  { kind: "ask", subject: "Gold", relation: "symbol", expected: "Au" },
+  { kind: "ask", subject: "Carbon", relation: "symbol", expected: "C" },
+  // --- Authorship (last-name convention used across the site) ---
+  { kind: "ask", subject: "Hamlet", relation: "author", expected: "Shakespeare" },
+  { kind: "ask", subject: "The Odyssey", relation: "author", expected: "Homer" },
+  // --- Harder analogies over knowledge the brain should hold ---
+  { kind: "analogy", from: "Germany", value: "Berlin", to: "Canada", expected: "Ottawa" },
+  { kind: "analogy", from: "Sky", value: "Blue", to: "Grass", expected: "Green" },
+  { kind: "analogy", from: "Cat", value: "Meow", to: "Cow", expected: "Moo" },
+  { kind: "analogy", from: "China", value: "Yuan", to: "Russia", expected: "Ruble" },
 ];
 
 export type ItemStatus = "correct" | "wrong" | "abstain";

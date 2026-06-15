@@ -1081,6 +1081,12 @@ recallConfidence(brain.ask("France", "capital")); // -> { confident, sigma }`}
         members) skip adjudication entirely - a second value there is an addition,
         not a conflict.
       </p>
+      <p className="mt-4">
+        The same guarantee holds when a moderator <Term>approves</Term> a held
+        fact from the admin queue: if its relation is single-valued, approval
+        automatically supersedes any previous active value, so a manual decision
+        can never leave two competing answers in recall either.
+      </p>
     </>
   ),
 

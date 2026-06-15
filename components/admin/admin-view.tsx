@@ -133,13 +133,9 @@ export function AdminView() {
         return;
       }
       if (res.ok) {
-        // If we're filtering by a non-active status, the row no longer belongs
-        // in the list; otherwise just reflect the new status in place.
-        if (status !== "all" && status !== "active") {
-          setRows((prev) => prev.filter((r) => r.id !== id));
-        } else {
-          setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: "active" } : r)));
-        }
+        // Approving can also supersede a conflicting active value (functional
+        // relations), so reload the current view to reflect every change.
+        await loadFacts(page, query, status);
       }
     } catch {
       /* ignore */

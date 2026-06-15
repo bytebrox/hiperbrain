@@ -72,7 +72,13 @@ export async function PATCH(
   }
 
   try {
-    const ok = await getStore().setStatus(numericId, status as FactStatus);
+    const store = getStore();
+    // Approving runs the smart path (auto-supersedes a conflicting active value
+    // for functional relations); other status changes are a plain update.
+    const ok =
+      status === "active"
+        ? await store.approve(numericId)
+        : await store.setStatus(numericId, status as FactStatus);
     if (ok) invalidateFactsCache();
     return NextResponse.json({ ok });
   } catch {

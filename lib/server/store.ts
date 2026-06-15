@@ -23,6 +23,7 @@
 import type { SupabaseClient } from "@supabase/supabase-js";
 import type { Fact } from "@hiperbrain/core";
 import { factKey } from "./moderation";
+import { isFunctional } from "./relations";
 import { getServiceClient, hasSupabase } from "./supabase";
 
 /** Maximum number of facts the shared brain will hold. */
@@ -124,8 +125,14 @@ export interface FactStore {
   listAll(opts: AdminQuery): Promise<AdminListResult>;
   /** Admin: permanently delete a fact. Returns true if a row was removed. */
   deleteFact(id: number): Promise<boolean>;
-  /** Admin: change a fact's status (e.g. approve a held fact -> active). */
+  /** Admin: change a fact's status (e.g. demote a fact to disputed). */
   setStatus(id: number, status: FactStatus): Promise<boolean>;
+  /**
+   * Admin: approve a fact -> active. For single-valued (functional) relations
+   * this also supersedes any other active value for the same subject+relation,
+   * so approving never leaves two conflicting answers in recall.
+   */
+  approve(id: number): Promise<boolean>;
 }
 
 /** Strip characters that would break a PostgREST `or(...)` filter expression. */
@@ -379,6 +386,35 @@ class SupabaseStore implements FactStore {
     if (error) throw error;
     return (count ?? 0) > 0;
   }
+
+  async approve(id: number): Promise<boolean> {
+    const { data, error } = await this.client
+      .from("facts")
+      .select("id,subject,relation")
+      .eq("id", id)
+      .maybeSingle();
+    if (error) throw error;
+    if (!data) return false;
+
+    const { error: e2 } = await this.client
+      .from("facts")
+      .update({ status: "active", superseded_by: null })
+      .eq("id", id);
+    if (e2) throw e2;
+
+    // Single-valued relation: demote any other active value for the same
+    // subject+relation so recall is never left with two competing answers.
+    if (isFunctional(data.relation as string)) {
+      const { error: e3 } = await this.client
+        .from("facts")
+        .update({ status: "superseded", superseded_by: id })
+        .eq("sr_key", srKey(data.subject as string, data.relation as string))
+        .eq("status", "active")
+        .neq("id", id);
+      if (e3) throw e3;
+    }
+    return true;
+  }
 }
 
 interface MemoryRow {
@@ -533,6 +569,23 @@ export class MemoryStore implements FactStore {
     if (!row) return false;
     row.status = status;
     if (status === "active") row.supersededBy = null;
+    return true;
+  }
+
+  async approve(id: number): Promise<boolean> {
+    const row = this.rows.find((r) => r.id === id);
+    if (!row) return false;
+    row.status = "active";
+    row.supersededBy = null;
+    if (isFunctional(row.relation)) {
+      const key = srKey(row.subject, row.relation);
+      for (const r of this.rows) {
+        if (r.id !== id && r.status === "active" && srKey(r.subject, r.relation) === key) {
+          r.status = "superseded";
+          r.supersededBy = id;
+        }
+      }
+    }
     return true;
   }
 }
