@@ -61,6 +61,13 @@ export function useCollectiveBrain() {
     });
   }, []);
 
+  // Drop a single fact (used when a row stops being active - superseded,
+  // disputed or deleted - so other clients' brains forget it live).
+  const removeFact = useCallback((fact: Fact) => {
+    const k = keyOf(fact);
+    setFacts((prev) => prev.filter((f) => keyOf(f) !== k));
+  }, []);
+
   useEffect(() => {
     let cancelled = false;
     (async () => {
@@ -83,30 +90,61 @@ export function useCollectiveBrain() {
     };
   }, []);
 
-  // Subscribe to live fact inserts (no-op when Supabase is not configured).
+  // Subscribe to live fact changes (no-op when Supabase is not configured). Only
+  // `active` facts belong in the local brain, so we gate every event on status:
+  //   INSERT active            -> add        (someone taught a confident fact)
+  //   UPDATE -> active          -> add        (admin approved a held fact)
+  //   UPDATE active -> non-active -> remove   (fact was superseded/disputed)
+  //   DELETE                    -> remove     (admin deleted a fact)
+  // Without this gate, disputed/superseded rows would leak into recall and old
+  // answers would linger after a contradiction was resolved.
   useEffect(() => {
     const supabase = getBrowserClient();
     if (!supabase) return;
+
+    type Row = Fact & { created_at?: string; status?: string | null };
+    const isActive = (row: Row) => row.status == null || row.status === "active";
+    const toFact = (row: Row): TimedFact => ({
+      subject: row.subject,
+      relation: row.relation,
+      object: row.object,
+      ts: row.created_at ? Date.parse(row.created_at) : Date.now(),
+    });
+
     const channel = supabase
       .channel("facts-stream")
       .on(
         "postgres_changes",
         { event: "INSERT", schema: "public", table: "facts" },
         (payload) => {
-          const row = payload.new as Fact & { created_at?: string };
-          addFact({
-            subject: row.subject,
-            relation: row.relation,
-            object: row.object,
-            ts: row.created_at ? Date.parse(row.created_at) : Date.now(),
-          });
+          const row = payload.new as Row;
+          if (isActive(row)) addFact(toFact(row));
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "UPDATE", schema: "public", table: "facts" },
+        (payload) => {
+          const row = payload.new as Row;
+          if (isActive(row)) addFact(toFact(row));
+          else removeFact(row);
+        },
+      )
+      .on(
+        "postgres_changes",
+        { event: "DELETE", schema: "public", table: "facts" },
+        (payload) => {
+          const row = payload.old as Partial<Row>;
+          if (row.subject && row.relation && row.object) {
+            removeFact({ subject: row.subject, relation: row.relation, object: row.object });
+          }
         },
       )
       .subscribe();
     return () => {
       void supabase.removeChannel(channel);
     };
-  }, [addFact]);
+  }, [addFact, removeFact]);
 
   // The HDC brain is expensive to assemble (thousands of 10,000-dimensional
   // vectors). We build it *off* the render path - after the facts have arrived

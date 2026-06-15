@@ -54,3 +54,10 @@ create index if not exists facts_sr_active_idx
 -- Listing/streaming reads filter by status, so index it too.
 create index if not exists facts_status_created_idx
   on public.facts (status, created_at);
+
+-- --- Realtime: ship full rows on UPDATE/DELETE -----------------------------
+-- The browser brain listens to live changes and must drop a fact when it stops
+-- being active (superseded/disputed) or is deleted. Without REPLICA IDENTITY
+-- FULL, DELETE events only carry the primary key, so the client can't match the
+-- row by (subject, relation, object). This makes the old row available too.
+alter table public.facts replica identity full;
