@@ -4,6 +4,7 @@ import "./globals.css";
 import { SiteHeader } from "@/components/site-header";
 import { SiteFooter } from "@/components/site-footer";
 import { BackgroundFX } from "@/components/background-fx";
+import { PageTransition } from "@/components/page-transition";
 
 // Site-wide typewriter / terminal identity. IBM Plex Mono is a clean, readable
 // monospace with genuine typewriter heritage - a deliberate break from the
@@ -83,7 +84,9 @@ export default function RootLayout({
       <body className="flex min-h-dvh flex-col">
         <BackgroundFX />
         <SiteHeader />
-        <main className="flex min-h-0 min-w-0 flex-1 flex-col">{children}</main>
+        <main className="flex min-h-0 min-w-0 flex-1 flex-col">
+          <PageTransition>{children}</PageTransition>
+        </main>
         <SiteFooter />
       </body>
     </html>

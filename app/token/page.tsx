@@ -38,7 +38,7 @@ export default function TokenPage() {
   const tokenConfigured = BASE58.test(mint);
 
   return (
-    <div className="mx-auto w-full min-w-0 max-w-2xl px-4 py-12 sm:px-6">
+    <div className="mx-auto w-full min-w-0 max-w-6xl px-4 py-12 sm:px-6">
       <h1 className="text-2xl font-semibold tracking-tight">Token &amp; API</h1>
       <p className="mt-2 max-w-prose text-sm leading-relaxed text-muted">
         The brain on the home page is free to play with. The token powers the

@@ -701,7 +701,7 @@ confident = sigma >= 4 && margin >= 2`}
       <p className="mt-4">
         <Link
           href="/"
-          className="inline-block rounded-md border border-accent/40 px-4 py-2 text-sm text-accent transition-colors hover:bg-accent/10"
+          className="btn-print inline-block rounded-md border border-accent/40 px-4 py-2 text-sm text-accent hover:bg-accent/10"
         >
           Go teach the brain something
         </Link>
@@ -834,7 +834,7 @@ recallConfidence(brain.ask("France", "capital")); // -> { confident, sigma }`}
           href="https://www.npmjs.com/package/@hiperbrain/core"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-block rounded-md border border-accent/40 px-4 py-2 text-sm text-accent transition-colors hover:bg-accent/10"
+          className="btn-print inline-block rounded-md border border-accent/40 px-4 py-2 text-sm text-accent hover:bg-accent/10"
         >
           View on npm
         </a>
@@ -842,7 +842,7 @@ recallConfidence(brain.ask("France", "capital")); // -> { confident, sigma }`}
           href="https://github.com/bytebrox/hiperbrain"
           target="_blank"
           rel="noopener noreferrer"
-          className="inline-block rounded-md border border-border px-4 py-2 text-sm text-muted transition-colors hover:text-foreground"
+          className="btn-print inline-block rounded-md border border-border px-4 py-2 text-sm text-muted hover:text-foreground"
         >
           Source on GitHub
         </a>
@@ -1245,7 +1245,7 @@ export function DocsView() {
         <h1 className="mt-3 text-3xl font-semibold tracking-tight sm:text-4xl">
           A brain that computes with 10,000-dimensional vectors
         </h1>
-        <p className="mt-4 text-lg leading-relaxed text-muted">
+        <p className="mt-4 text-base leading-relaxed text-muted">
           Almost everything labelled &quot;AI&quot; today is one of two things: a
           giant neural network that is powerful but an opaque black box, or
           old-school symbolic logic that is transparent but brittle. hiperbrain is
@@ -1375,7 +1375,7 @@ function Accordion({
         }`}
       >
         <div className="overflow-hidden">
-          <div className="space-y-3 pb-6 leading-relaxed text-muted">{children}</div>
+          <div className="space-y-3 pb-6 text-sm leading-relaxed text-muted">{children}</div>
         </div>
       </div>
     </section>

@@ -38,13 +38,13 @@ export function HomeHero() {
       <div className="flex min-h-0 w-full max-w-2xl flex-1 flex-col lg:justify-center">
         <div
           ref={canvasAreaRef}
-          className="relative flex w-full flex-1 flex-col min-h-[240px] lg:min-h-0"
+          className="relative flex w-full flex-1 flex-col min-h-[160px] max-h-[34vh] lg:max-h-none lg:min-h-0"
         >
           <BrainCanvas
             ref={canvasRef}
             facts={facts}
             onNodeClick={(name) => setValue(`concepts like ${name}`)}
-            className="h-full min-h-[240px] w-full flex-1 cursor-pointer lg:min-h-[160px]"
+            className="h-full min-h-[160px] w-full flex-1 cursor-pointer lg:min-h-[160px]"
           />
           {loading ? (
             <BrainLoader
@@ -58,8 +58,10 @@ export function HomeHero() {
         </div>
 
         <div className="mt-5 mb-5 shrink-0 text-center lg:mt-2 lg:mb-6">
-          <h1 className="font-mono text-2xl font-semibold tracking-tight">hiperbrain</h1>
-          <p className="mt-1 text-sm text-muted">
+          <h1 className="font-mono text-4xl font-bold lowercase tracking-tighter sm:text-5xl">
+            hiperbrain
+          </h1>
+          <p className="mt-2 text-[11px] uppercase tracking-[0.32em] text-muted">
             a shared brain that thinks in 10,000 dimensions
           </p>
         </div>

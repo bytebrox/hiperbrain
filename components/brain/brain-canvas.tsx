@@ -66,6 +66,16 @@ interface Shock {
   hue: number;
 }
 
+/** A cyan ink fleck that drifts off the brain (the scattering-dots motif). */
+interface Speckle {
+  x: number;
+  y: number;
+  vx: number;
+  vy: number;
+  life: number;
+  r: number;
+}
+
 interface Node {
   name: string;
   degree: number;
@@ -92,12 +102,13 @@ interface Graph {
 
 const MAX_NODES = 80;
 const MAX_PULSES = 80;
-const MESH_DIST = 46;
 // How long (frames) a reasoning trace stays highlighted (~5.5s at 60fps).
 const FOCUS_FRAMES = 340;
-// Near (cyan) -> far (violet), matching the brand glow.
-const NEAR_RGB: [number, number, number] = [34, 211, 238];
-const FAR_RGB: [number, number, number] = [139, 92, 246];
+// Paper-white "second plate" used for the brightest highlights.
+const PAPER: [number, number, number] = [243, 239, 228];
+// Screen-print halftone: visible pixels per dot cell. Smaller = finer screen.
+const HALFTONE_CELL = 4;
+const MAX_SPECKLES = 130;
 
 function emptyGraph(): Graph {
   return {
@@ -223,6 +234,21 @@ export const BrainCanvas = forwardRef<BrainCanvasHandle, BrainCanvasProps>(funct
     const ctx = canvas.getContext("2d");
     if (!ctx) return;
 
+    // Offscreen buffers for the halftone post-process: the soft "tone field" is
+    // painted at full size into `scene`, downscaled into the tiny `grid`, and
+    // that grid is read back so we can stamp one dot per cell on the visible
+    // canvas - the classic screen-print dot screen, done efficiently.
+    const scene = document.createElement("canvas");
+    const sctx = scene.getContext("2d");
+    const grid = document.createElement("canvas");
+    const gctx = grid.getContext("2d", { willReadFrequently: true });
+    if (!sctx || !gctx) return;
+    let gridW = 1;
+    let gridH = 1;
+
+    // Drifting ink flecks that scatter off the brain.
+    const speckles: Speckle[] = [];
+
     const reduced =
       typeof window !== "undefined" &&
       window.matchMedia?.("(prefers-reduced-motion: reduce)").matches;
@@ -241,6 +267,13 @@ export const BrainCanvas = forwardRef<BrainCanvasHandle, BrainCanvasProps>(funct
       canvas.style.width = `${width}px`;
       canvas.style.height = `${vh}px`;
       ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+      // Tone buffer at CSS resolution; grid one pixel per halftone cell.
+      scene.width = Math.max(1, width);
+      scene.height = Math.max(1, vh);
+      gridW = Math.max(1, Math.ceil(width / HALFTONE_CELL));
+      gridH = Math.max(1, Math.ceil(vh / HALFTONE_CELL));
+      grid.width = gridW;
+      grid.height = gridH;
     };
     resize();
     const observer = new ResizeObserver(resize);
@@ -340,12 +373,22 @@ export const BrainCanvas = forwardRef<BrainCanvasHandle, BrainCanvasProps>(funct
       };
     };
 
-    const mix = (t: number, alpha: number) => {
-      const r = Math.round(NEAR_RGB[0] + (FAR_RGB[0] - NEAR_RGB[0]) * t);
-      const gg = Math.round(NEAR_RGB[1] + (FAR_RGB[1] - NEAR_RGB[1]) * t);
-      const b = Math.round(NEAR_RGB[2] + (FAR_RGB[2] - NEAR_RGB[2]) * t);
-      return `rgba(${r}, ${gg}, ${b}, ${alpha})`;
-    };
+    // Eject drifting ink flecks from a screen point, biased leftward so they
+    // scatter off toward the open space (the print's speckle motif).
+    function emitSpeckles(sx: number, sy: number, count: number) {
+      for (let i = 0; i < count && speckles.length < MAX_SPECKLES; i++) {
+        const ang = Math.random() * Math.PI * 2;
+        const spd = 0.35 + Math.random() * 1.5;
+        speckles.push({
+          x: sx,
+          y: sy,
+          vx: Math.cos(ang) * spd - 0.5,
+          vy: Math.sin(ang) * spd - 0.12,
+          life: 0.7 + Math.random() * 0.6,
+          r: 0.7 + Math.random() * 1.7,
+        });
+      }
+    }
 
     // Spawn pulses from a node along its edges (a "thought" firing).
     function ignite(g: Graph, name: string, count: number) {
@@ -508,6 +551,10 @@ export const BrainCanvas = forwardRef<BrainCanvasHandle, BrainCanvasProps>(funct
             continue;
           }
           g.flash.set(pulse.b, 1);
+          if (!reduced && Math.random() < 0.5) {
+            const bp = project(g.pos.get(pulse.b)!);
+            emitSpeckles(bp.sx, bp.sy, 1);
+          }
           const neighbors = g.adj.get(pulse.b);
           if (neighbors && neighbors.length && next.length < MAX_PULSES && Math.random() < 0.72) {
             const children = 1 + (Math.random() < 0.4 ? 1 : 0);
@@ -536,6 +583,7 @@ export const BrainCanvas = forwardRef<BrainCanvasHandle, BrainCanvasProps>(funct
           ignite(g, hub.name, 6);
           const hp = project(g.pos.get(hub.name)!);
           g.shocks.push({ sx: hp.sx, sy: hp.sy, r: 4, max: B * 1.6, life: 1, hue: 0.5 });
+          emitSpeckles(hp.sx, hp.sy, 14);
         }
       }
 
@@ -545,6 +593,28 @@ export const BrainCanvas = forwardRef<BrainCanvasHandle, BrainCanvasProps>(funct
         s.life -= 0.018;
       }
       g.shocks = g.shocks.filter((s) => s.life > 0);
+
+      // Steady gentle scatter so there are always a few flecks in the air.
+      if (!reduced && speckles.length < 44 && Math.random() < 0.3 && n > 0) {
+        const node = g.nodes[Math.floor(Math.random() * n)];
+        const sp = project(g.pos.get(node.name)!);
+        emitSpeckles(sp.sx, sp.sy, 1);
+      }
+
+      // Advance / retire speckles.
+      for (const s of speckles) {
+        s.x += s.vx;
+        s.y += s.vy;
+        s.vx = s.vx * 0.985 - 0.006;
+        s.vy *= 0.985;
+        s.life -= 0.011;
+      }
+      for (let i = speckles.length - 1; i >= 0; i--) {
+        const s = speckles[i];
+        if (s.life <= 0 || s.x < -24 || s.y < -24 || s.x > width + 24 || s.y > vh + 24) {
+          speckles.splice(i, 1);
+        }
+      }
     };
 
     // Perpendicular-offset control point for a curved beam between two points.
@@ -566,25 +636,13 @@ export const BrainCanvas = forwardRef<BrainCanvasHandle, BrainCanvasProps>(funct
     const draw = () => {
       const g = graphRef.current;
 
-      // Fade the previous frame toward transparent for motion trails. Using
-      // destination-out keeps the canvas see-through, so it blends seamlessly
-      // into the page background instead of showing a filled rectangle.
-      if (reduced) {
-        ctx.globalCompositeOperation = "source-over";
-        ctx.clearRect(0, 0, width, vh);
-      } else {
-        ctx.globalCompositeOperation = "destination-out";
-        ctx.fillStyle = "rgba(0, 0, 0, 0.45)";
-        ctx.fillRect(0, 0, width, vh);
-      }
+      // Flat screen-print look: wipe the frame completely (no additive neon
+      // trails) and composite normally, so every shape is opaque ink laid on
+      // the transparent canvas - the paper background shows through the gaps.
+      ctx.globalCompositeOperation = "source-over";
+      ctx.clearRect(0, 0, width, vh);
 
-      if (g.nodes.length === 0) {
-        ctx.globalCompositeOperation = "source-over";
-        return;
-      }
-
-      // Everything glowing is drawn additively for a neon bloom.
-      ctx.globalCompositeOperation = "lighter";
+      if (g.nodes.length === 0) return;
 
       // Project all nodes once; detect the hovered node (probe).
       const projOf = new Map<string, ReturnType<typeof project>>();
@@ -613,31 +671,7 @@ export const BrainCanvas = forwardRef<BrainCanvasHandle, BrainCanvasProps>(funct
         for (const nb of g.adj.get(hovered) ?? []) activeSet.add(nb);
       }
       const someActive = activeSet.size > 0;
-      const dimOthers = focusActive ? 0.22 : 0.4;
-
-      // Constellation mesh: faint links between nearby nodes (depth of the net).
-      ctx.lineWidth = 0.4;
-      for (let i = 0; i < g.nodes.length; i++) {
-        const ni = g.nodes[i].name;
-        const a = g.pos.get(ni)!;
-        for (let j = i + 1; j < g.nodes.length; j++) {
-          const nj = g.nodes[j].name;
-          const b = g.pos.get(nj)!;
-          const dx = a.x - b.x;
-          const dy = a.y - b.y;
-          const dz = a.z - b.z;
-          const d2 = dx * dx + dy * dy + dz * dz;
-          if (d2 > MESH_DIST * MESH_DIST) continue;
-          const fade = 1 - Math.sqrt(d2) / MESH_DIST;
-          const pa = projOf.get(ni)!;
-          const pb = projOf.get(nj)!;
-          ctx.strokeStyle = `rgba(125, 211, 252, ${0.05 * fade})`;
-          ctx.beginPath();
-          ctx.moveTo(pa.sx, pa.sy);
-          ctx.lineTo(pb.sx, pb.sy);
-          ctx.stroke();
-        }
-      }
+      const dimOthers = focusActive ? 0.18 : 0.34;
 
       // Curved control point for an edge, computed in screen space (order-independent).
       const curveOf = (n1: string, n2: string) => {
@@ -648,7 +682,6 @@ export const BrainCanvas = forwardRef<BrainCanvasHandle, BrainCanvasProps>(funct
         return { a, b, pa, pb, cx, cy };
       };
 
-      // Edges, sorted far -> near, drawn as glowing curves.
       const projEdges = g.edges
         .map((e) => {
           const c = curveOf(e.a, e.b);
@@ -656,20 +689,52 @@ export const BrainCanvas = forwardRef<BrainCanvasHandle, BrainCanvasProps>(funct
         })
         .sort((u, v) => v.depth - u.depth);
 
+      const projNodes = g.nodes
+        .map((node) => ({ node, p: projOf.get(node.name)! }))
+        .sort((u, v) => v.p.z - u.p.z);
+
+      // ---- PHASE 1: paint a soft "tone field" into the offscreen scene. ----
+      // Additive blending so overlapping nodes build up brightness; the brighter
+      // and denser a region, the bigger the halftone dot it becomes.
+      sctx.setTransform(1, 0, 0, 1, 0, 0);
+      sctx.clearRect(0, 0, width, vh);
+      sctx.globalCompositeOperation = "lighter";
+
       for (const { c, depth, e } of projEdges) {
-        const t = (c.pa.depth + c.pb.depth) / 2;
         const hot = activeSet.has(e.a) && activeSet.has(e.b);
         const dim = someActive && !hot ? dimOthers : 1;
-        const alpha = (hot ? 0.6 : 0.22) * (1 - depth * 0.7) * dim;
-        ctx.strokeStyle = mix(t, alpha);
-        ctx.lineWidth = Math.max(0.4, (hot ? 1.6 : 0.9) * ((c.pa.persp + c.pb.persp) / 2));
-        ctx.beginPath();
-        ctx.moveTo(c.pa.sx, c.pa.sy);
-        ctx.quadraticCurveTo(c.cx, c.cy, c.pb.sx, c.pb.sy);
-        ctx.stroke();
+        const a = (hot ? 0.42 : 0.1) * (1 - depth * 0.6) * dim;
+        sctx.strokeStyle = `rgba(34, 211, 238, ${a})`;
+        sctx.lineWidth = (hot ? 2 : 1.1) * ((c.pa.persp + c.pb.persp) / 2);
+        sctx.beginPath();
+        sctx.moveTo(c.pa.sx, c.pa.sy);
+        sctx.quadraticCurveTo(c.cx, c.cy, c.pb.sx, c.pb.sy);
+        sctx.stroke();
       }
 
-      // Pulses travelling along curved edges with comet glow.
+      for (const { node, p } of projNodes) {
+        const t = p.depth;
+        const flash = g.flash.get(node.name) ?? 0;
+        const breath = 1 + 0.1 * Math.sin(time * 0.05 + node.phase);
+        const hot = activeSet.has(node.name);
+        const isAnswer = focusActive && node.name === g.answer;
+        const dim = someActive && !hot ? dimOthers : 1;
+        const core =
+          Math.min(7, 2.5 + node.degree * 0.7) * p.persp * breath * (hot ? 1.5 : 1) *
+          (isAnswer ? 1.35 : 1);
+        const R = core * (1.45 + flash * 2.0);
+        const peak = (0.62 + flash * 0.4) * (1 - t * 0.55) * dim;
+        const lit = isAnswer || flash > 0.15 || hot;
+        const grd = sctx.createRadialGradient(p.sx, p.sy, 0, p.sx, p.sy, R);
+        grd.addColorStop(0, `${lit ? "rgba(200, 248, 255, " : "rgba(34, 211, 238, "}${peak})`);
+        grd.addColorStop(0.42, `rgba(34, 211, 238, ${peak * 0.4})`);
+        grd.addColorStop(1, "rgba(34, 211, 238, 0)");
+        sctx.fillStyle = grd;
+        sctx.beginPath();
+        sctx.arc(p.sx, p.sy, R, 0, Math.PI * 2);
+        sctx.fill();
+      }
+
       for (const pulse of g.pulses) {
         if (!g.pos.get(pulse.a) || !g.pos.get(pulse.b)) continue;
         const c = curveOf(pulse.a, pulse.b);
@@ -677,95 +742,109 @@ export const BrainCanvas = forwardRef<BrainCanvasHandle, BrainCanvasProps>(funct
         const it = 1 - tt;
         const px = it * it * c.pa.sx + 2 * it * tt * c.cx + tt * tt * c.pb.sx;
         const py = it * it * c.pa.sy + 2 * it * tt * c.cy + tt * tt * c.pb.sy;
-        const radius = 4.5;
-        const glow = ctx.createRadialGradient(px, py, 0, px, py, radius * 2.2);
-        glow.addColorStop(0, "rgba(224, 242, 254, 0.95)");
-        glow.addColorStop(0.4, "rgba(125, 211, 252, 0.6)");
-        glow.addColorStop(1, "rgba(125, 211, 252, 0)");
-        ctx.fillStyle = glow;
+        const grd = sctx.createRadialGradient(px, py, 0, px, py, 7);
+        grd.addColorStop(0, "rgba(210, 250, 255, 0.9)");
+        grd.addColorStop(1, "rgba(34, 211, 238, 0)");
+        sctx.fillStyle = grd;
+        sctx.beginPath();
+        sctx.arc(px, py, 7, 0, Math.PI * 2);
+        sctx.fill();
+      }
+      sctx.globalCompositeOperation = "source-over";
+
+      // ---- PHASE 2: halftone screen. Downscale the tone field to one pixel ----
+      // per cell, then stamp a cyan dot whose size tracks that cell's coverage.
+      gctx.clearRect(0, 0, gridW, gridH);
+      gctx.drawImage(scene, 0, 0, gridW, gridH);
+      const data = gctx.getImageData(0, 0, gridW, gridH).data;
+      const cell = HALFTONE_CELL;
+      const rMax = cell * 0.62;
+      for (let gyi = 0; gyi < gridH; gyi++) {
+        for (let gxi = 0; gxi < gridW; gxi++) {
+          const idx = (gyi * gridW + gxi) * 4;
+          const aRaw = data[idx + 3];
+          if (aRaw < 18) continue;
+          const cov = aRaw / 255;
+          const radius = rMax * Math.min(1, Math.pow(cov, 0.7));
+          if (radius < 0.35) continue;
+          const lum = (data[idx] + data[idx + 1] + data[idx + 2]) / 3;
+          const w = Math.max(0, Math.min(1, (lum - 150) / 95));
+          const cr = Math.round(34 + (PAPER[0] - 34) * w);
+          const cg = Math.round(211 + (PAPER[1] - 211) * w);
+          const cb = Math.round(238 + (PAPER[2] - 238) * w);
+          ctx.fillStyle = `rgb(${cr}, ${cg}, ${cb})`;
+          ctx.beginPath();
+          ctx.arc(gxi * cell + cell / 2, gyi * cell + cell / 2, radius, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+
+      // ---- PHASE 3: bold ink contours over the dots (the "cracks"). ----
+      for (const { c, depth, e } of projEdges) {
+        const hot = activeSet.has(e.a) && activeSet.has(e.b);
+        const dim = someActive && !hot ? dimOthers : 1;
+        const a = (hot ? 0.9 : 0.32) * (1 - depth * 0.62) * dim;
+        ctx.strokeStyle = hot ? `rgba(210, 250, 255, ${a})` : `rgba(125, 211, 252, ${a})`;
+        ctx.lineWidth = Math.max(0.8, (hot ? 2.2 : 1.1) * ((c.pa.persp + c.pb.persp) / 2));
         ctx.beginPath();
-        ctx.arc(px, py, radius * 2.2, 0, Math.PI * 2);
+        ctx.moveTo(c.pa.sx, c.pa.sy);
+        ctx.quadraticCurveTo(c.cx, c.cy, c.pb.sx, c.pb.sy);
+        ctx.stroke();
+      }
+
+      // Crisp node cores so concepts stay defined (and hover/answer reads clearly).
+      for (const { node, p } of projNodes) {
+        const flash = g.flash.get(node.name) ?? 0;
+        const hot = activeSet.has(node.name);
+        const isAnswer = focusActive && node.name === g.answer;
+        const dim = someActive && !hot ? dimOthers : 1;
+        const lit = isAnswer || flash > 0.15 || hot;
+        const r = Math.max(
+          1.1,
+          Math.min(3.4, 1.3 + node.degree * 0.28) * p.persp * (hot ? 1.4 : 1),
+        );
+        ctx.fillStyle = lit
+          ? `rgba(${PAPER[0]}, ${PAPER[1]}, ${PAPER[2]}, ${0.95 * dim})`
+          : `rgba(125, 211, 252, ${0.85 * dim})`;
+        ctx.beginPath();
+        ctx.arc(p.sx, p.sy, r, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // Reasoning beams: bright thought lines connecting the reasoned concepts.
+      // ---- PHASE 4: drifting ink flecks scattering off the brain. ----
+      for (const s of speckles) {
+        ctx.fillStyle = `rgba(34, 211, 238, ${Math.min(0.85, s.life)})`;
+        ctx.beginPath();
+        ctx.arc(s.x, s.y, s.r, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
+      // ---- PHASE 5: reasoning beams (kept colourful for legibility). ----
       for (const beam of g.beams) {
         const pa = projOf.get(beam.a);
         const pb = projOf.get(beam.b);
         if (!pa || !pb) continue;
         const { cx, cy } = controlPoint(pa.sx, pa.sy, pb.sx, pb.sy, `beam|${beam.a}|${beam.b}`);
-        const head = beam.mapping ? [196, 181, 253] : [224, 242, 254];
-        const trail = beam.mapping ? [139, 92, 246] : [56, 189, 248];
-
-        // Faint full beam line behind the travelling head.
-        ctx.strokeStyle = `rgba(${trail[0]}, ${trail[1]}, ${trail[2]}, 0.28)`;
-        ctx.lineWidth = 1.4;
+        const head = beam.mapping ? "rgba(196, 181, 253, 0.98)" : "rgba(210, 250, 255, 0.98)";
+        const trail = beam.mapping ? "rgba(139, 92, 246, 0.6)" : "rgba(34, 211, 238, 0.6)";
+        ctx.strokeStyle = trail;
+        ctx.lineWidth = 2;
         ctx.beginPath();
         ctx.moveTo(pa.sx, pa.sy);
         ctx.quadraticCurveTo(cx, cy, pb.sx, pb.sy);
         ctx.stroke();
-
-        const tt = Math.max(0, Math.min(1, beam.t));
         if (beam.t < 0) continue;
+        const tt = Math.max(0, Math.min(1, beam.t));
         const it = 1 - tt;
         const px = it * it * pa.sx + 2 * it * tt * cx + tt * tt * pb.sx;
         const py = it * it * pa.sy + 2 * it * tt * cy + tt * tt * pb.sy;
-        const radius = 7;
-        const glow = ctx.createRadialGradient(px, py, 0, px, py, radius * 2.4);
-        glow.addColorStop(0, `rgba(${head[0]}, ${head[1]}, ${head[2]}, 0.98)`);
-        glow.addColorStop(0.4, `rgba(${trail[0]}, ${trail[1]}, ${trail[2]}, 0.7)`);
-        glow.addColorStop(1, `rgba(${trail[0]}, ${trail[1]}, ${trail[2]}, 0)`);
-        ctx.fillStyle = glow;
+        ctx.fillStyle = head;
         ctx.beginPath();
-        ctx.arc(px, py, radius * 2.4, 0, Math.PI * 2);
+        ctx.arc(px, py, 4, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // Nodes, sorted far -> near.
-      const projNodes = g.nodes
-        .map((node) => ({ node, p: projOf.get(node.name)! }))
-        .sort((u, v) => v.p.z - u.p.z);
-
-      for (const { node, p } of projNodes) {
-        const t = p.depth;
-        const flash = g.flash.get(node.name) ?? 0;
-        const breath = 1 + 0.12 * Math.sin(time * 0.05 + node.phase);
-        const hot = activeSet.has(node.name);
-        const isAnswer = focusActive && node.name === g.answer;
-        const dim = someActive && !hot ? dimOthers : 1;
-        const base =
-          Math.min(6, 2 + node.degree * 0.6) * p.persp * breath * (hot ? 1.45 : 1) *
-          (isAnswer ? 1.25 : 1);
-        const coreAlpha = (0.95 - 0.5 * t) * dim;
-
-        // Tighter halo so nodes read as crisp points instead of a hazy bloom.
-        const glowR = base * (2.2 + flash * 3.2);
-        const glow = ctx.createRadialGradient(p.sx, p.sy, base * 0.5, p.sx, p.sy, glowR);
-        glow.addColorStop(0, mix(t, (0.28 + flash * 0.45) * (1 - t * 0.5) * dim));
-        glow.addColorStop(1, mix(t, 0));
-        ctx.fillStyle = glow;
-        ctx.beginPath();
-        ctx.arc(p.sx, p.sy, glowR, 0, Math.PI * 2);
-        ctx.fill();
-
-        ctx.fillStyle =
-          isAnswer || flash > 0.1 ? `rgba(255, 255, 255, ${coreAlpha})` : mix(t, coreAlpha);
-        ctx.beginPath();
-        ctx.arc(p.sx, p.sy, base, 0, Math.PI * 2);
-        ctx.fill();
-      }
-
-      // Shockwaves (synapse bursts).
-      for (const s of g.shocks) {
-        ctx.strokeStyle = mix(s.hue, 0.4 * s.life);
-        ctx.lineWidth = 2 * s.life;
-        ctx.beginPath();
-        ctx.arc(s.sx, s.sy, s.r, 0, Math.PI * 2);
-        ctx.stroke();
-      }
-
-      // Labels on top, no additive blending.
-      ctx.globalCompositeOperation = "source-over";
+      // ---- PHASE 6: labels on top. ----
       for (const { node, p } of projNodes) {
         const t = p.depth;
         const hot = activeSet.has(node.name);

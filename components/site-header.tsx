@@ -2,6 +2,7 @@
 
 import Link from "next/link";
 import { usePathname } from "next/navigation";
+import { useEffect, useState } from "react";
 
 const NAV_LINKS = [
   { href: "/", label: "Home" },
@@ -27,8 +28,30 @@ function XIcon({ className }: { className?: string }) {
   );
 }
 
+function MenuIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+      <path d="M4 6h16M4 12h16M4 18h16" />
+    </svg>
+  );
+}
+
+function CloseIcon({ className }: { className?: string }) {
+  return (
+    <svg className={className} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" aria-hidden>
+      <path d="M6 6l12 12M18 6L6 18" />
+    </svg>
+  );
+}
+
 export function SiteHeader() {
   const pathname = usePathname();
+  const [open, setOpen] = useState(false);
+
+  // Collapse the mobile menu whenever the route changes.
+  useEffect(() => {
+    setOpen(false);
+  }, [pathname]);
 
   return (
     <header className="sticky top-0 z-30 bg-gradient-to-b from-background via-background/85 to-transparent backdrop-blur-sm">
@@ -39,7 +62,8 @@ export function SiteHeader() {
           </span>
         </Link>
 
-        <nav className="flex items-center gap-0 sm:gap-1">
+        {/* Inline navigation: hidden on small screens in favour of the hamburger. */}
+        <nav className="hidden items-center gap-1 sm:flex">
           {NAV_LINKS.map((link) => {
             const active =
               link.href === "/"
@@ -49,7 +73,7 @@ export function SiteHeader() {
               <Link
                 key={link.href}
                 href={link.href}
-                className={`rounded-sm px-1.5 py-1.5 text-xs transition-colors sm:px-3 sm:text-sm ${
+                className={`rounded-sm px-3 py-1.5 text-sm transition-colors ${
                   active
                     ? "bg-surface-2 text-foreground"
                     : "text-muted hover:text-foreground"
@@ -65,9 +89,9 @@ export function SiteHeader() {
             rel="noreferrer"
             aria-label="GitHub"
             title="GitHub"
-            className="ml-0.5 rounded-sm p-1 text-muted transition-colors hover:text-foreground sm:ml-2 sm:p-1.5"
+            className="ml-2 rounded-sm p-1.5 text-muted transition-colors hover:text-foreground"
           >
-            <GitHubIcon className="h-[18px] w-[18px] sm:h-5 sm:w-5" />
+            <GitHubIcon className="h-5 w-5" />
           </a>
           <a
             href="https://x.com/hiperbrainx"
@@ -75,12 +99,80 @@ export function SiteHeader() {
             rel="noreferrer"
             aria-label="X"
             title="X"
-            className="rounded-sm p-1 text-muted transition-colors hover:text-foreground sm:p-1.5"
+            className="rounded-sm p-1.5 text-muted transition-colors hover:text-foreground"
           >
-            <XIcon className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+            <XIcon className="h-[18px] w-[18px]" />
           </a>
         </nav>
+
+        {/* Hamburger toggle: only on small screens. */}
+        <button
+          type="button"
+          onClick={() => setOpen((o) => !o)}
+          aria-label={open ? "Close menu" : "Open menu"}
+          aria-expanded={open}
+          className="rounded-sm p-1.5 text-muted transition-colors hover:text-foreground sm:hidden"
+        >
+          {open ? <CloseIcon className="h-6 w-6" /> : <MenuIcon className="h-6 w-6" />}
+        </button>
       </div>
+
+      {/* Mobile dropdown panel: overlays the page (absolute) and animates in/out. */}
+      <nav
+        className={`absolute inset-x-0 top-16 origin-top border-b border-border/60 bg-background/95 backdrop-blur-sm transition-all duration-200 ease-out sm:hidden ${
+          open
+            ? "pointer-events-auto translate-y-0 opacity-100"
+            : "pointer-events-none -translate-y-2 opacity-0"
+        }`}
+        aria-hidden={!open}
+      >
+        <div className="mx-auto flex max-w-6xl flex-col px-3 py-2">
+          {NAV_LINKS.map((link) => {
+            const active =
+              link.href === "/"
+                ? pathname === "/"
+                : pathname.startsWith(link.href);
+            return (
+              <Link
+                key={link.href}
+                href={link.href}
+                tabIndex={open ? undefined : -1}
+                className={`rounded-sm px-3 py-3 text-sm transition-colors ${
+                  active
+                    ? "bg-surface-2 text-foreground"
+                    : "text-muted hover:text-foreground"
+                }`}
+              >
+                {link.label}
+              </Link>
+            );
+          })}
+          <div className="mt-1 flex items-center gap-1 border-t border-border/60 px-1 pt-2">
+            <a
+              href="https://github.com/bytebrox/hiperbrain"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="GitHub"
+              title="GitHub"
+              tabIndex={open ? undefined : -1}
+              className="rounded-sm p-2 text-muted transition-colors hover:text-foreground"
+            >
+              <GitHubIcon className="h-5 w-5" />
+            </a>
+            <a
+              href="https://x.com/hiperbrainx"
+              target="_blank"
+              rel="noreferrer"
+              aria-label="X"
+              title="X"
+              tabIndex={open ? undefined : -1}
+              className="rounded-sm p-2 text-muted transition-colors hover:text-foreground"
+            >
+              <XIcon className="h-[18px] w-[18px]" />
+            </a>
+          </div>
+        </div>
+      </nav>
     </header>
   );
 }

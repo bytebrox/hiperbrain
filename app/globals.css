@@ -2,15 +2,17 @@
 
 /*
  * Design tokens for the hiperbrain UI.
- * A dark, "lab-instrument" aesthetic with a cyan/violet neuron accent.
+ * A two-colour screen-print aesthetic: cyan + paper-white ink on near-black
+ * paper stock. Flat, high-contrast, analog - not a glowing neon lab.
  */
 :root {
-  --background: #07090f;
-  --surface: #0e1118;
-  --surface-2: #151a24;
-  --border: #232a38;
-  --foreground: #e7ecf3;
-  --muted: #93a0b4;
+  --background: #060606;
+  --surface: #0d0d0f;
+  --surface-2: #141417;
+  --border: #2b2b2f;
+  /* Warm off-white, like ink soaked into uncoated paper. */
+  --foreground: #f3efe4;
+  --muted: #8b8f98;
   --accent: #22d3ee;
   --accent-2: #a78bfa;
   --positive: #34d399;
@@ -57,47 +59,103 @@ body {
   inset: 0;
   z-index: -10;
   pointer-events: none;
+  /* Almost pure black paper with a single faint cyan ink wash near the hero and
+     a heavy vignette - the opposite of a glowing neon scene. */
   background:
-    radial-gradient(60% 50% at 50% 34%, rgba(34, 211, 238, 0.15), transparent 68%),
-    radial-gradient(46% 42% at 61% 28%, rgba(167, 139, 250, 0.11), transparent 70%),
-    radial-gradient(150% 110% at 50% 6%, rgba(120, 160, 220, 0.055), transparent 58%),
-    radial-gradient(120% 120% at 50% 42%, transparent 62%, rgba(0, 0, 0, 0.45) 100%);
+    radial-gradient(52% 42% at 50% 30%, rgba(34, 211, 238, 0.05), transparent 72%),
+    radial-gradient(120% 120% at 50% 38%, transparent 48%, rgba(0, 0, 0, 0.7) 100%);
 }
 
-/* Fine film grain. A tiny desaturated SVG noise tile. On a near-black surface
-   it has to be blended with "screen" (overlay would leave black untouched and
-   stay invisible), so the flat dark area gets real analog texture. */
+/* Coarse paper grain. A desaturated SVG noise tile blended with "screen" so the
+   flat black reads like uncoated, printed paper stock rather than a clean LCD. */
 .bg-grain {
   position: fixed;
   inset: 0;
   z-index: -10;
   pointer-events: none;
-  opacity: 0.07;
+  opacity: 0.16;
   mix-blend-mode: screen;
-  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='160' height='160'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
-  background-size: 160px 160px;
-  animation: grain-shift 0.7s steps(6) infinite;
+  background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='200' height='200'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.78' numOctaves='3' stitchTiles='stitch'/%3E%3CfeColorMatrix type='saturate' values='0'/%3E%3C/filter%3E%3Crect width='100%25' height='100%25' filter='url(%23n)'/%3E%3C/svg%3E");
+  background-size: 200px 200px;
 }
 
-@keyframes grain-shift {
-  0% {
-    background-position: 0 0;
-  }
-  100% {
-    background-position: 160px 160px;
-  }
+/* A printed dot-screen (halftone) laid over the whole page, masked so it
+   concentrates around the hero and fades out toward the edges. This is the
+   single strongest "screen-print" signal - the page literally reads as dots. */
+.bg-halftone {
+  position: fixed;
+  inset: 0;
+  z-index: -10;
+  pointer-events: none;
+  opacity: 0.05;
+  background-image: radial-gradient(rgba(34, 211, 238, 0.95) 1px, transparent 1.7px);
+  background-size: 7px 7px;
+  -webkit-mask-image: radial-gradient(72% 60% at 50% 30%, #000 0%, transparent 78%);
+  mask-image: radial-gradient(72% 60% at 50% 30%, #000 0%, transparent 78%);
 }
 
-@media (prefers-reduced-motion: reduce) {
-  .bg-grain {
-    animation: none;
-  }
+/* Halftone dot screen. Tint via `color`. Use on accent panels, dividers and
+   overlays - never behind body text, to keep copy crisp. */
+.halftone {
+  color: var(--accent);
+  background-image: radial-gradient(currentColor 22%, transparent 24%);
+  background-size: 6px 6px;
+}
+
+/* Flat screen-print buttons/chips: on interaction a hard, blur-less offset
+   shadow pops out and the control nudges, like pressing a printed sticker. No
+   resting shadow, so many chips side by side stay calm. */
+.btn-print {
+  transition:
+    transform 0.08s ease,
+    box-shadow 0.08s ease,
+    border-color 0.12s ease,
+    color 0.12s ease;
+}
+.btn-print:hover {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 0 var(--accent);
+}
+.btn-print:active {
+  transform: translate(1px, 1px);
+  box-shadow: 1px 1px 0 0 var(--accent);
+}
+
+/* Flat screen-print panel: square-ish corners, a hard ink border and a
+   blur-less offset shadow in the accent colour, like a sticker printed on the
+   paper. No soft glow anywhere. */
+.card-print {
+  border: 1.5px solid var(--border);
+  border-radius: 3px;
+  background: var(--surface);
+  box-shadow: 6px 6px 0 0 rgba(34, 211, 238, 0.12);
 }
 
 /* Thin scrollbars that match the dark theme. */
 * {
   scrollbar-width: thin;
   scrollbar-color: var(--border) transparent;
+}
+
+/* Route-change transition: each new page mounts with a soft fade + tiny rise,
+   keyed by pathname so it replays on every navigation. */
+@keyframes page-enter {
+  from {
+    opacity: 0;
+    transform: translateY(8px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+.page-enter {
+  animation: page-enter 0.32s cubic-bezier(0.22, 1, 0.36, 1) both;
+}
+@media (prefers-reduced-motion: reduce) {
+  .page-enter {
+    animation: none;
+  }
 }
 
 /*

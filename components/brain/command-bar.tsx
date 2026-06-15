@@ -183,7 +183,7 @@ export function CommandBar({
               type="button"
               onClick={() => fillTemplate(k)}
               title={KIND_HINT[k]}
-              className={`rounded-sm border px-4 py-1.5 font-mono text-xs uppercase tracking-wider transition-colors ${
+              className={`btn-print rounded-sm border px-4 py-1.5 font-mono text-xs uppercase tracking-wider ${
                 active
                   ? "border-accent/60 bg-accent/10 text-foreground"
                   : "border-border text-muted hover:text-foreground"
@@ -212,7 +212,7 @@ export function CommandBar({
           spellCheck={false}
           placeholder={placeholder}
           aria-label="Ask or teach the brain"
-          className="w-full rounded-sm border border-border bg-surface/70 px-12 py-3.5 text-center text-base text-foreground outline-none transition-colors placeholder:text-muted/40 focus:border-accent/60 sm:px-14 sm:py-4 sm:text-lg"
+          className="card-print w-full px-12 py-3.5 text-center text-base text-foreground outline-none transition-colors placeholder:text-muted/40 focus:border-accent sm:px-14 sm:py-4 sm:text-lg"
         />
         <button
           type="button"
@@ -230,15 +230,22 @@ export function CommandBar({
         </button>
       </div>
 
-      <div className="mt-4 min-h-[4.5rem] sm:mt-6 sm:min-h-[5.5rem]">
-        <Result
-          brain={brain}
-          resolvers={resolvers}
-          cmd={cmd}
-          pending={pending}
-          taught={showTaught}
-          onPick={pick}
-        />
+      {/* Fixed height so switching between states (empty hint, answer, teach
+          confirmation, neighbour list, ...) never changes the column height -
+          otherwise the flex-1 canvas above would resize and the brain would
+          visibly jump. Tall enough to hold the tallest state (the empty hint /
+          neighbour list) without clipping. */}
+      <div className="mt-4 flex h-44 items-center justify-center overflow-hidden sm:mt-6">
+        <div className="w-full">
+          <Result
+            brain={brain}
+            resolvers={resolvers}
+            cmd={cmd}
+            pending={pending}
+            taught={showTaught}
+            onPick={pick}
+          />
+        </div>
       </div>
 
       <div className="mt-2 flex flex-wrap items-center justify-center gap-2">
@@ -247,7 +254,7 @@ export function CommandBar({
             key={ex.text}
             type="button"
             onClick={() => pick(ex.text)}
-            className="group rounded-sm border border-border px-3 py-1 font-mono text-xs text-muted transition-colors hover:border-accent/50 hover:text-foreground"
+            className="btn-print group rounded-sm border border-border px-3 py-1 font-mono text-xs text-muted hover:border-accent/50 hover:text-foreground"
           >
             <span className="mr-1.5 text-[10px] uppercase tracking-wide text-accent/70">
               {KIND_LABEL[ex.kind]}
@@ -624,7 +631,7 @@ function EmptyState({ onPick }: { onPick: (text: string) => void }) {
       <p className="text-sm text-muted">
         Type in plain language - there are three things you can do:
       </p>
-      <div className="mx-auto mt-3 flex max-w-md flex-col gap-1.5">
+      <div className="mx-auto mt-3 flex max-w-xl flex-col gap-1.5">
         {rows.map((r) => (
           <button
             key={r.kind}

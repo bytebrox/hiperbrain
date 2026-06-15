@@ -344,7 +344,7 @@ export function AdminView() {
 
 function Shell({ children }: { children: React.ReactNode }) {
   return (
-    <div className="mx-auto max-w-3xl px-4 py-12 sm:px-6">
+    <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
       <h1 className="text-2xl font-semibold tracking-tight">Admin</h1>
       <p className="mt-1 text-sm text-muted">Moderate and remove facts from the collective brain.</p>
       {children}
