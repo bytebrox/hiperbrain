@@ -192,7 +192,7 @@ export function useCollectiveBrain() {
             return {
               ok: true,
               status: "disputed",
-              message: `Noted as disputed - the brain isn't sure yet.${reason ? ` ${reason}` : ""}`,
+              message: `Saved for review - the brain won't trust it until it's confirmed.${reason ? ` ${reason}` : ""}`,
             };
           case "replaced":
             replaceFact({ ...(data.fact as Fact), ts: Date.now() });

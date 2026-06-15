@@ -59,13 +59,23 @@ export async function teachFact(
 ): Promise<TeachResult> {
   // 1. Fact-check. Only a confident "false" blocks the submission.
   let verdict: string | null = null;
+  let verifyReason = "";
   if (isVerificationEnabled()) {
     const check = await verifyFact(fact);
     if (check.verdict === "false") return { kind: "rejected", reason: check.reason };
     verdict = check.verdict;
+    verifyReason = check.reason;
   }
   const confidence = confidenceFor(verdict);
   const base = { source: meta.source, owner: meta.owner ?? null, verdict, confidence };
+
+  // Hold-for-review gate: when verification is ON, only a confident "true" is
+  // trusted into the active brain automatically. Anything "uncertain" - whether
+  // the model was unsure OR the checker was unreachable (fail-closed) - is kept
+  // as `disputed` and never feeds recall until an admin approves it. When
+  // verification is OFF entirely (no key), this gate is disabled, so local/dev
+  // teaching keeps working as before.
+  const heldForReview = isVerificationEnabled() && verdict !== "true";
 
   const store = getStore();
   await store.ensureSeeded();
@@ -107,7 +117,19 @@ export async function teachFact(
     }
   }
 
-  // 3. No conflict: a normal active insert (duplicates handled by fact_key).
+  // 3a. No conflict, but the checker isn't confident it's true -> hold it back
+  // as disputed (out of recall) instead of trusting it blindly.
+  if (heldForReview) {
+    const reason = verifyReason || "Held for review before the brain trusts it.";
+    const added = await store.addFact(fact, { ...base, status: "disputed", note: reason });
+    if (added.status === "added") {
+      return { kind: "disputed", fact, reason, total: added.total };
+    }
+    return mapAdd(added, fact);
+  }
+
+  // 3b. Confident-true (or verification disabled): a normal active insert
+  // (duplicates handled by fact_key).
   const added = await store.addFact(fact, { ...base, status: "active" });
   return mapAdd(added, fact);
 }

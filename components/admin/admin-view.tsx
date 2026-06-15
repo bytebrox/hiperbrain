@@ -32,6 +32,7 @@ export function AdminView() {
   const [status, setStatus] = useState<StatusFilter>("all");
   const [loadingRows, setLoadingRows] = useState(false);
   const [deletingId, setDeletingId] = useState<number | null>(null);
+  const [approvingId, setApprovingId] = useState<number | null>(null);
 
   useEffect(() => {
     fetch("/api/admin/login")
@@ -107,6 +108,34 @@ export function AdminView() {
     setQuery("");
     setStatus("all");
     setPhase("login");
+  }
+
+  async function approve(id: number) {
+    setApprovingId(id);
+    try {
+      const res = await fetch(`/api/admin/facts/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status: "active" }),
+      });
+      if (res.status === 401) {
+        setPhase("login");
+        return;
+      }
+      if (res.ok) {
+        // If we're filtering by a non-active status, the row no longer belongs
+        // in the list; otherwise just reflect the new status in place.
+        if (status !== "all" && status !== "active") {
+          setRows((prev) => prev.filter((r) => r.id !== id));
+        } else {
+          setRows((prev) => prev.map((r) => (r.id === id ? { ...r, status: "active" } : r)));
+        }
+      }
+    } catch {
+      /* ignore */
+    } finally {
+      setApprovingId(null);
+    }
   }
 
   async function remove(id: number) {
@@ -242,13 +271,25 @@ export function AdminView() {
                   <span>· {new Date(r.createdAt).toLocaleDateString()}</span>
                 </div>
               </div>
-              <button
-                onClick={() => remove(r.id)}
-                disabled={deletingId === r.id}
-                className="shrink-0 rounded-sm border border-negative/40 px-2.5 py-1 text-xs text-negative transition-colors hover:bg-negative/10 disabled:opacity-40"
-              >
-                {deletingId === r.id ? "Deleting…" : "Delete"}
-              </button>
+              <div className="flex shrink-0 items-center gap-1.5">
+                {r.status !== "active" ? (
+                  <button
+                    onClick={() => approve(r.id)}
+                    disabled={approvingId === r.id}
+                    title="Approve: make this fact active and feed it into recall"
+                    className="rounded-sm border border-positive/40 px-2.5 py-1 text-xs text-positive transition-colors hover:bg-positive/10 disabled:opacity-40"
+                  >
+                    {approvingId === r.id ? "Approving…" : "Approve"}
+                  </button>
+                ) : null}
+                <button
+                  onClick={() => remove(r.id)}
+                  disabled={deletingId === r.id}
+                  className="rounded-sm border border-negative/40 px-2.5 py-1 text-xs text-negative transition-colors hover:bg-negative/10 disabled:opacity-40"
+                >
+                  {deletingId === r.id ? "Deleting…" : "Delete"}
+                </button>
+              </div>
             </li>
           ))
         )}

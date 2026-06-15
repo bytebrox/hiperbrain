@@ -136,8 +136,10 @@ the shared memory:
 - a content blocklist filter,
 - per-IP rate limiting,
 - duplicate detection and a global capacity cap,
-- an optional AI fact-check that screens new claims for obvious falsehoods - it
-  *fails open*, so it only ever blocks confident mistakes, never your answers.
+- an optional AI fact-check on new claims: a confident *false* is rejected, a
+  confident *true* is trusted into recall, and anything *uncertain* (or any
+  checker outage) is held back as `disputed` and kept out of recall until an
+  admin approves it - *fail-closed for trust, fail-open for availability*.
 
 Every stored fact also carries **provenance** - its source (`seed`, `community`
 or `api`), the wallet that taught it (for API writes), the fact-checker verdict
@@ -151,9 +153,10 @@ stays `active`, the loser is marked `superseded`, and a tie is logged as
 submission can never corrupt recall - and every resolved conflict is visible on
 the [`/logs`](https://www.hiperbrain.com/logs) page.
 
-Crucially, none of this touches how questions are answered: every answer is still
-pure vector algebra. The AI check only ever guards what gets *written* into the
-shared memory.
+Crucially, none of this touches how questions are answered: **every answer is
+pure vector algebra, with no language model anywhere in the answer path.**
+hiperbrain is not an LLM - it only uses one as an optional gatekeeper that
+screens what gets *written* into the shared memory.
 
 ## Measured, not claimed - the public benchmark
 

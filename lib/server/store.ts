@@ -118,6 +118,8 @@ export interface FactStore {
   listAll(opts: AdminQuery): Promise<AdminListResult>;
   /** Admin: permanently delete a fact. Returns true if a row was removed. */
   deleteFact(id: number): Promise<boolean>;
+  /** Admin: change a fact's status (e.g. approve a held fact -> active). */
+  setStatus(id: number, status: FactStatus): Promise<boolean>;
 }
 
 /** Strip characters that would break a PostgREST `or(...)` filter expression. */
@@ -351,6 +353,18 @@ class SupabaseStore implements FactStore {
     if (error) throw error;
     return (count ?? 0) > 0;
   }
+
+  async setStatus(id: number, status: FactStatus): Promise<boolean> {
+    // Activating a fact clears any "superseded by" link it may have carried.
+    const patch: Record<string, unknown> = { status };
+    if (status === "active") patch.superseded_by = null;
+    const { error, count } = await this.client
+      .from("facts")
+      .update(patch, { count: "exact" })
+      .eq("id", id);
+    if (error) throw error;
+    return (count ?? 0) > 0;
+  }
 }
 
 interface MemoryRow {
@@ -491,6 +505,14 @@ export class MemoryStore implements FactStore {
     const [removed] = this.rows.splice(idx, 1);
     this.keys.delete(factKey(removed));
     for (const r of this.rows) if (r.supersededBy === id) r.supersededBy = null;
+    return true;
+  }
+
+  async setStatus(id: number, status: FactStatus): Promise<boolean> {
+    const row = this.rows.find((r) => r.id === id);
+    if (!row) return false;
+    row.status = status;
+    if (status === "active") row.supersededBy = null;
     return true;
   }
 }

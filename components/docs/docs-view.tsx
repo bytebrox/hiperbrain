@@ -1003,11 +1003,23 @@ recallConfidence(brain.ask("France", "capital")); // -> { confident, sigma }`}
         audited.
       </p>
       <p>
-        Before anything is stored it passes an AI <Term>fact-checker</Term>. A
-        claim the checker is confident is false is rejected outright. Everything
-        else (including &ldquo;uncertain&rdquo;, and any checker outage) is allowed
-        through - the system fails open so infrastructure hiccups never block
-        learning.
+        Before anything is stored it passes an AI <Term>fact-checker</Term>, and
+        the gate is deliberately conservative. A claim the checker is confident is
+        <em> false</em> is rejected outright. Only a confident <em>true</em> is
+        trusted straight into the active brain. Anything <em>uncertain</em> -
+        whether the model itself was unsure or the checker was unreachable - is
+        held back as <Mono>disputed</Mono>: it is recorded, but it does{" "}
+        <strong>not</strong> feed recall until an admin approves it. So the
+        contradiction-resolution layer is <em>fail-closed</em> for trust (junk
+        never silently enters recall) while still <em>fail-open</em> for
+        availability (nothing is ever lost or hard-blocked).
+      </p>
+      <p>
+        Worth being precise about: this checker only ever <em>guards what gets
+        written</em>. It never produces an answer. Every recall the brain returns
+        is still pure vector algebra over the hypervectors - there is no language
+        model anywhere in the answer path. hiperbrain is not an LLM; it merely
+        uses one as an optional gatekeeper at the door.
       </p>
       <p>
         The interesting case is <Term>contradiction</Term>. Some relations are{" "}
