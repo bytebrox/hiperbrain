@@ -6,9 +6,16 @@
  * shared brain we can ask a language model whether it is factually correct.
  *
  * Design notes:
- *  - This is *fail-open*: if no API key is set, or the request errors / times
- *    out, we return "uncertain" so submissions are never blocked by infra
- *    problems. Only a confident "false" verdict should reject a fact.
+ *  - At the checker level this is *fail-open*: if no API key is set, or the
+ *    request errors / times out, we return "uncertain" rather than throwing, so
+ *    a submission is never blocked by infra problems. Only a confident "false"
+ *    verdict is a hard reject here.
+ *  - What happens to an "uncertain" verdict is decided downstream in `teach.ts`:
+ *    when verification is ENABLED, uncertain (incl. checker outages) is held
+ *    back as `disputed` instead of going active - i.e. fail-CLOSED for what
+ *    enters recall. When verification is disabled entirely (no key), teaching
+ *    keeps working and the fact lands active. So: fail-open for availability,
+ *    fail-closed for trust.
  *  - We use the plain REST API via fetch (no SDK dependency) and a small, fast,
  *    cheap model with deterministic settings.
  */
