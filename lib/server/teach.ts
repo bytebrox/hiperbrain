@@ -23,6 +23,7 @@
  */
 
 import type { Fact } from "@hiperbrain/core";
+import { canonicalRelation } from "../relation-aliases";
 import { getStore, type AddResult, type FactSource } from "./store";
 import { isFunctional } from "./relations";
 import { adjudicate, isVerificationEnabled, verifyFact } from "./verify-fact";
@@ -54,9 +55,13 @@ function confidenceFor(verdict: string | null): number | null {
 }
 
 export async function teachFact(
-  fact: Fact,
+  rawFact: Fact,
   meta: { source: FactSource; owner?: string | null },
 ): Promise<TeachResult> {
+  // Normalise the relation onto its canonical form ("money" -> "currency") so
+  // the store, contradiction checks and recall all agree on one spelling.
+  const fact: Fact = { ...rawFact, relation: canonicalRelation(rawFact.relation) };
+
   // 1. Fact-check. Only a confident "false" blocks the submission.
   let verdict: string | null = null;
   let verifyReason = "";

@@ -13,6 +13,7 @@ import { NextResponse } from "next/server";
 import { recallConfidence } from "@hiperbrain/core";
 import { bearerToken, COST_ASK, spendCredits } from "@/lib/server/credits";
 import { getServerBrain } from "@/lib/server/brain-server";
+import { canonicalRelation } from "@/lib/relation-aliases";
 
 export const dynamic = "force-dynamic";
 
@@ -43,7 +44,7 @@ export async function POST(request: Request) {
   }
 
   const brain = await getServerBrain();
-  const matches = brain.ask(subject, relation, k);
+  const matches = brain.ask(subject, canonicalRelation(relation), k);
   const confidence = recallConfidence(matches);
 
   return NextResponse.json({

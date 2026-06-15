@@ -620,6 +620,17 @@ confident = sigma >= 4 && margin >= 2`}
         </li>
       </ul>
       <p className="mt-3">
+        On top of that, a small curated <Term>relation-alias</Term> layer lets
+        you phrase questions the way you actually speak. <Mono>money of Japan</Mono>{" "}
+        resolves to <Mono>currency</Mono>, <Mono>capital city of Spain</Mono> to{" "}
+        <Mono>capital</Mono>, and verb questions like{" "}
+        <Mono>who leads Tesla?</Mono> or <Mono>who wrote Hamlet?</Mono> map onto{" "}
+        <Mono>ceo</Mono> and <Mono>author</Mono>. The mapping is a tiny, explicit
+        table (<Mono>lib/relation-aliases.ts</Mono>) - only unambiguous synonyms,
+        never a guess - applied on both write and read so the store stays
+        consistent.
+      </p>
+      <p className="mt-3">
         The parser is intentionally simple and transparent - it lives in{" "}
         <Mono>lib/parse-command.ts</Mono> - so you always know exactly how your
         words become vectors. No hidden interpretation, no language model
@@ -651,10 +662,10 @@ confident = sigma >= 4 && margin >= 2`}
   limits: (
     <>
       <p>
-        This is not magic and not an LLM. It does not understand language: it does
-        not know that &quot;capital&quot; and &quot;main city&quot; mean the same
-        thing, and it cannot chain steps on its own (&quot;the capital of the
-        country whose currency is the Yen&quot;).
+        This is not magic and not an LLM. It does not understand language: beyond
+        a small hand-written alias table for common synonyms, it has no semantic
+        grasp of words, and it cannot chain steps on its own (&quot;the capital of
+        the country whose currency is the Yen&quot;).
       </p>
       <p>
         It knows what it has been taught, and reasons over that with vectors.

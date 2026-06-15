@@ -18,6 +18,8 @@
  *   "USA is to Dollar as Mexico is to ?"
  */
 
+import { VERB_RELATIONS } from "./relation-aliases";
+
 export type Command =
   | { kind: "empty" }
   | { kind: "ask"; subject: string; relation: string }
@@ -25,6 +27,10 @@ export type Command =
   | { kind: "analogy"; from: string; value: string; to: string }
   | { kind: "neighbors"; entity: string }
   | { kind: "invalid"; message: string };
+
+// Verb questions: "who leads Tesla" / "who founded Apple" / "who wrote Hamlet".
+// The verb itself carries the relation (leads -> ceo), so it is mapped directly.
+const VERB_QUESTION_RE = /^who\s+([a-z]+(?:-[a-z]+)?)\s+(.+)$/i;
 
 const ASK_HINT = 'Try: "capital of France"';
 const TEACH_HINT = 'Try: "Madrid is the capital of Spain"';
@@ -135,6 +141,16 @@ export function parseCommand(raw: string): Command {
   if (neighbors) {
     const entity = stripArticle(neighbors[1].trim());
     if (entity) return { kind: "neighbors", entity };
+  }
+
+  // Verb questions: "who leads Tesla" -> ask the ceo of Tesla. Only fires when
+  // the verb maps to a known relation, so "who is the ..." still falls through
+  // to the normal question handling below.
+  const verbQ = VERB_QUESTION_RE.exec(cleaned);
+  if (verbQ) {
+    const relation = VERB_RELATIONS[verbQ[1].toLowerCase()];
+    const subject = stripArticle(verbQ[2].trim());
+    if (relation && subject) return { kind: "ask", subject, relation };
   }
 
   const text = stripQuestionPrefix(cleaned);

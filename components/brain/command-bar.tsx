@@ -3,6 +3,7 @@
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type KnowledgeBrain, recallConfidence } from "@hiperbrain/core";
 import { parseCommand, type Command } from "@/lib/parse-command";
+import { canonicalRelation } from "@/lib/relation-aliases";
 import type { BrainResolvers, TeachOutcome } from "@/lib/use-collective-brain";
 import type { TracePayload } from "./brain-canvas";
 import {
@@ -480,7 +481,7 @@ function Result({
   }
 
   // Ask
-  const relation = cmd.relation.toLowerCase();
+  const relation = canonicalRelation(cmd.relation);
   const matches = brain.ask(cmd.subject, relation, 4);
   const conf = recallConfidence(matches);
   if (!conf.confident) {
@@ -534,7 +535,7 @@ function suggestCorrection(
   const subj = resolvers.concept.resolve(subject)?.name ?? subject;
   const rel = resolvers.relation.resolve(relation)?.name ?? relation;
   if (subj === subject && rel === relation) return null;
-  const conf = recallConfidence(brain.ask(subj, rel.toLowerCase(), 2));
+  const conf = recallConfidence(brain.ask(subj, canonicalRelation(rel), 2));
   if (!conf.confident) return null;
   return `${rel} of ${subj}`;
 }
@@ -552,12 +553,12 @@ function buildTrace(
 ): TracePayload | null {
   if (cmd.kind === "ask") {
     let subject = cmd.subject;
-    let relation = cmd.relation.toLowerCase();
+    let relation = canonicalRelation(cmd.relation);
     let matches = brain.ask(subject, relation, 4);
     let conf = recallConfidence(matches);
     if (!conf.confident && resolvers) {
       const s2 = resolvers.concept.resolve(cmd.subject)?.name ?? subject;
-      const r2 = (resolvers.relation.resolve(cmd.relation)?.name ?? relation).toLowerCase();
+      const r2 = canonicalRelation(resolvers.relation.resolve(cmd.relation)?.name ?? relation);
       const m2 = brain.ask(s2, r2, 4);
       const c2 = recallConfidence(m2);
       if (c2.confident) {

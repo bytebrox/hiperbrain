@@ -35,6 +35,9 @@ export const EXAMPLES: Example[] = [
   { kind: "ask", text: "Italy's capital" },
   { kind: "ask", text: "tell me the currency of Japan" },
   { kind: "ask", text: "landmark of France" },
+  // Synonyms and verb phrasing - resolved to the canonical relation.
+  { kind: "ask", text: "money of Japan" },
+  { kind: "ask", text: "capital city of Brazil" },
 
   // Teach - shows the three accepted phrasings (canonical, reversed, possessive).
   { kind: "teach", text: "Madrid is the capital of Spain" },

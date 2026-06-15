@@ -99,6 +99,41 @@ describe("parseCommand", () => {
     });
   });
 
+  describe("verb questions", () => {
+    it("maps 'who leads X' to the ceo relation", () => {
+      expect(parseCommand("who leads Tesla?")).toEqual({
+        kind: "ask",
+        subject: "Tesla",
+        relation: "ceo",
+      });
+    });
+
+    it("maps 'who founded X' and 'who wrote X'", () => {
+      expect(parseCommand("who founded Apple")).toMatchObject({
+        kind: "ask",
+        relation: "founder",
+        subject: "Apple",
+      });
+      expect(parseCommand("who wrote the Odyssey")).toMatchObject({
+        kind: "ask",
+        relation: "author",
+        subject: "Odyssey",
+      });
+    });
+
+    it("still defers 'who is the ...' to normal question handling", () => {
+      expect(parseCommand("who is the president of France")).toEqual({
+        kind: "ask",
+        relation: "president",
+        subject: "France",
+      });
+    });
+
+    it("does not hijack an unknown verb", () => {
+      expect(parseCommand("who likes pizza").kind).toBe("invalid");
+    });
+  });
+
   it("falls back to a helpful hint", () => {
     expect(parseCommand("hello there").kind).toBe("invalid");
   });
