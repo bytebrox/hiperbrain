@@ -3,22 +3,24 @@
  *
  *   POST /api/v1/teach   (Authorization: Bearer <key>)
  *   body: { subject, relation, object }
- *   -> { status: "added" | "duplicate", total, remaining }
+ *   -> { status: "added" | "replaced" | "duplicate" | "superseded" | "disputed", total, remaining }
  *
- * Costs CREDITS_COST_TEACH credits (writes are AI-verified and permanent, so
- * they cost more than a read). The charge is refunded if the fact is a
- * duplicate or rejected, so users only pay for facts that actually land.
+ * Costs CREDITS_COST_TEACH credits. The charge is refunded whenever the
+ * submission does not land as a new active fact (duplicate, rejected, full, or
+ * lost/uncertain in a contradiction), so users only pay for knowledge that
+ * actually enters the brain.
  */
 
 import { NextResponse } from "next/server";
 import { validateFact } from "@/lib/server/moderation";
-import { getStore, invalidateFactsCache, MAX_FACTS } from "@/lib/server/store";
-import { isVerificationEnabled, verifyFact } from "@/lib/server/verify-fact";
+import { invalidateFactsCache, MAX_FACTS } from "@/lib/server/store";
+import { landedActive, teachFact } from "@/lib/server/teach";
 import {
   bearerToken,
   COST_TEACH,
   refundCredits,
   spendCredits,
+  walletForKey,
 } from "@/lib/server/credits";
 
 export const dynamic = "force-dynamic";
@@ -39,18 +41,9 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
-  if (isVerificationEnabled()) {
-    const check = await verifyFact(result.fact);
-    if (check.verdict === "false") {
-      return NextResponse.json(
-        { error: `That doesn't appear to be correct: ${check.reason}`, verdict: check.verdict },
-        { status: 422 },
-      );
-    }
-  }
-
-  // Charge first (atomic), then write. Refund if the write doesn't add a fact.
-  const remaining = await spendCredits(key, COST_TEACH);
+  // Charge first (atomic), then run the teach pipeline; refund if nothing
+  // active landed.
+  let remaining = await spendCredits(key, COST_TEACH);
   if (remaining < 0) {
     return NextResponse.json(
       { error: "Out of credits, or unknown API key. Burn tokens to top up." },
@@ -58,26 +51,59 @@ export async function POST(request: Request) {
     );
   }
 
-  const store = getStore();
-  await store.ensureSeeded();
-  const added = await store.addFact(result.fact);
+  const owner = await walletForKey(key);
+  const outcome = await teachFact(result.fact, { source: "api", owner });
 
-  if (added.status !== "added") {
-    await refundCredits(key, COST_TEACH); // duplicate or full: don't charge
-    if (added.status === "full") {
-      return NextResponse.json(
-        { error: `The brain is at capacity (${MAX_FACTS} facts).`, remaining: remaining + COST_TEACH },
-        { status: 409 },
-      );
-    }
-    return NextResponse.json(
-      { status: "duplicate", fact: result.fact, total: added.total, remaining: remaining + COST_TEACH },
-    );
+  if (!landedActive(outcome)) {
+    await refundCredits(key, COST_TEACH);
+    remaining += COST_TEACH;
+  } else {
+    invalidateFactsCache();
   }
 
-  invalidateFactsCache();
-  return NextResponse.json(
-    { status: "added", fact: result.fact, total: added.total, remaining },
-    { status: 201 },
-  );
+  switch (outcome.kind) {
+    case "rejected":
+      return NextResponse.json(
+        { error: `That doesn't appear to be correct: ${outcome.reason}`, verdict: "false", remaining },
+        { status: 422 },
+      );
+    case "full":
+      return NextResponse.json(
+        { error: `The brain is at capacity (${MAX_FACTS} facts).`, remaining },
+        { status: 409 },
+      );
+    case "duplicate":
+      return NextResponse.json({
+        status: "duplicate",
+        fact: outcome.fact,
+        total: outcome.total,
+        remaining,
+      });
+    case "superseded":
+      return NextResponse.json({
+        status: "superseded",
+        fact: outcome.fact,
+        reason: outcome.reason,
+        total: outcome.total,
+        remaining,
+      });
+    case "disputed":
+      return NextResponse.json({
+        status: "disputed",
+        fact: outcome.fact,
+        reason: outcome.reason,
+        total: outcome.total,
+        remaining,
+      });
+    case "replaced":
+      return NextResponse.json(
+        { status: "replaced", fact: outcome.fact, reason: outcome.reason, total: outcome.total, remaining },
+        { status: 201 },
+      );
+    default:
+      return NextResponse.json(
+        { status: "added", fact: outcome.fact, total: outcome.total, remaining },
+        { status: 201 },
+      );
+  }
 }

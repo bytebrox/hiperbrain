@@ -45,10 +45,12 @@ const SECTIONS: SectionMeta[] = [
   // The collective system
   { id: "collective", title: "A brain the whole internet builds", group: "The collective system" },
   { id: "architecture", title: "How hiperbrain is built", group: "The collective system" },
+  { id: "trust", title: "Provenance, verification and resolving contradictions", group: "The collective system" },
   { id: "commands", title: "The command language", group: "The collective system" },
   { id: "resolver", title: "Typo-tolerant input: fault tolerance for what you type", group: "The collective system" },
 
   // Reference
+  { id: "benchmark", title: "The public benchmark: measured, not claimed", group: "Reference" },
   { id: "limits", title: "Where it is honest about its limits", group: "Reference" },
   { id: "science", title: "The science behind it", group: "Reference" },
   { id: "faq", title: "Frequently asked questions", group: "Reference" },
@@ -986,6 +988,97 @@ recallConfidence(brain.ask("France", "capital")); // -> { confident, sigma }`}
           so the write was rejected (no charge).
         </li>
       </ul>
+    </>
+  ),
+
+  trust: (
+    <>
+      <p>
+        A brain the whole internet can write to needs a way to stay clean. Every
+        taught fact carries <Term>provenance</Term> - where it came from
+        (<Mono>seed</Mono>, <Mono>community</Mono> or the metered <Mono>api</Mono>),
+        who taught it (the wallet, for API writes), a fact-checker{" "}
+        <Term>verdict</Term> and a numeric <Term>confidence</Term>. None of this
+        touches the vectors; it lives alongside the triple so the knowledge can be
+        audited.
+      </p>
+      <p>
+        Before anything is stored it passes an AI <Term>fact-checker</Term>. A
+        claim the checker is confident is false is rejected outright. Everything
+        else (including &ldquo;uncertain&rdquo;, and any checker outage) is allowed
+        through - the system fails open so infrastructure hiccups never block
+        learning.
+      </p>
+      <p>
+        The interesting case is <Term>contradiction</Term>. Some relations are{" "}
+        <em>single-valued</em>: a country has exactly one capital. If someone
+        teaches &ldquo;the capital of France is Lyon&rdquo; while the brain already
+        holds Paris, the two cannot both be true. Rather than silently averaging
+        them into a corrupted vector, hiperbrain asks the checker to{" "}
+        <Term>adjudicate</Term> which value is correct:
+      </p>
+      <ul className="mt-2 space-y-2">
+        <li>
+          <Term>New wins</Term> — the new value becomes active and the old one is
+          marked <Mono>superseded</Mono> (the brain changed its mind).
+        </li>
+        <li>
+          <Term>Existing wins</Term> — the established value stays; the new claim
+          is recorded as <Mono>superseded</Mono> for the record.
+        </li>
+        <li>
+          <Term>Uncertain</Term> — the established value is kept active and the new
+          claim is logged as <Mono>disputed</Mono>, so a single unverified
+          submission can never knock a good answer out of recall.
+        </li>
+      </ul>
+      <p className="mt-4">
+        Crucially, <Term>only active facts feed the brain&apos;s math</Term>.
+        Superseded and disputed claims are preserved for the{" "}
+        <Mono>/logs</Mono> conflict view but never pollute a relation&apos;s
+        bundled memory. Multi-valued relations (languages spoken, neighbours,
+        members) skip adjudication entirely - a second value there is an addition,
+        not a conflict.
+      </p>
+    </>
+  ),
+
+  benchmark: (
+    <>
+      <p>
+        Bold claims deserve a number. The{" "}
+        <Mono>
+          <a href="/benchmark">/benchmark</a>
+        </Mono>{" "}
+        page runs a fixed set of known-answer questions against the live brain, in
+        your browser, every time you open it - nothing is precomputed or
+        cherry-picked.
+      </p>
+      <p>
+        Because an associative memory should <em>abstain</em> rather than guess,
+        the headline metric is not just accuracy. We report three honest numbers:
+      </p>
+      <ul className="mt-2 space-y-2">
+        <li>
+          <Term>Accuracy</Term> — correct answers over all questions.
+        </li>
+        <li>
+          <Term>Precision</Term> — correct answers over the questions it answered{" "}
+          <em>confidently</em> (using the calibrated sigma threshold).
+        </li>
+        <li>
+          <Term>Confident-wrong</Term> — the HDC analogue of hallucination: how
+          often it was confident <em>and</em> wrong. A well-calibrated brain keeps
+          this near zero by saying &ldquo;I don&apos;t know&rdquo; on what it
+          hasn&apos;t learned.
+        </li>
+      </ul>
+      <p className="mt-4">
+        That last number is the point: unlike a language model, hiperbrain does not
+        fabricate a plausible answer under pressure. When the signal is weak it
+        abstains, and the benchmark makes that behaviour measurable instead of a
+        marketing claim.
+      </p>
     </>
   ),
 };

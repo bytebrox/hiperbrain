@@ -1,10 +1,20 @@
 "use client";
 
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { HypervectorHeatmap } from "@/components/heatmap";
 import { useCollectiveBrain } from "@/lib/use-collective-brain";
 
 const PAGE_SIZE = 50;
+
+interface Dispute {
+  subject: string;
+  relation: string;
+  losing: string;
+  winning: string | null;
+  status: "superseded" | "disputed";
+  note: string | null;
+  ts: number;
+}
 
 function relativeTime(ts?: number): string {
   if (!ts) return "";
@@ -22,6 +32,20 @@ export default function LogsPage() {
   const stats = brain.stats();
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
+  const [disputes, setDisputes] = useState<Dispute[]>([]);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/disputes")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setDisputes(Array.isArray(d.disputes) ? d.disputes : []);
+      })
+      .catch(() => {});
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // All filtering and paging happens client-side - the facts are already loaded
   // for the brain/heatmap, so this adds zero extra server or database load.
@@ -71,6 +95,44 @@ export default function LogsPage() {
         <Stat value={stats.concepts} label="concepts" />
         <Stat value={stats.relations} label="relations" />
       </div>
+
+      {disputes.length > 0 ? (
+        <section className="mt-8">
+          <h2 className="text-sm font-semibold uppercase tracking-wider text-muted">
+            Conflicts the brain resolved
+          </h2>
+          <p className="mt-1 text-xs text-muted">
+            When two people teach different answers to the same single-valued question, the
+            fact-checker decides which one the brain keeps. Only the winner feeds recall.
+          </p>
+          <ul className="mt-3 divide-y divide-border border-y border-border">
+            {disputes.map((d, i) => (
+              <li key={`${d.subject}-${d.relation}-${d.losing}-${i}`} className="py-3 text-sm">
+                <div className="flex flex-wrap items-center gap-x-2 gap-y-1 font-mono">
+                  <span className="text-muted">the {d.relation} of</span>
+                  <span>{d.subject}</span>
+                  <span className="text-muted">:</span>
+                  <span className="text-negative line-through decoration-negative/50">
+                    {d.losing}
+                  </span>
+                  <span className="text-muted">&rarr;</span>
+                  <span className="text-accent">{d.winning ?? "unresolved"}</span>
+                  <span
+                    className={`rounded-sm border px-1.5 py-0.5 text-[10px] uppercase tracking-wider ${
+                      d.status === "disputed"
+                        ? "border-border text-muted"
+                        : "border-accent/40 text-accent"
+                    }`}
+                  >
+                    {d.status}
+                  </span>
+                </div>
+                {d.note ? <p className="mt-1 text-xs text-muted/80">{d.note}</p> : null}
+              </li>
+            ))}
+          </ul>
+        </section>
+      ) : null}
 
       {status === "loading" ? (
         <p className="mt-8 text-sm text-muted">Loading...</p>

@@ -1,3 +1,4 @@
+import Link from "next/link";
 import { ContractAddress } from "@/components/contract-address";
 
 export function SiteFooter() {
@@ -13,7 +14,12 @@ export function SiteFooter() {
 
         <ContractAddress address={process.env.NEXT_PUBLIC_CONTRACT_ADDRESS} />
 
-        <span className="text-xs text-muted/80">© {year} hiperbrain</span>
+        <div className="flex items-center gap-3 text-xs text-muted/80">
+          <Link href="/admin" className="transition-colors hover:text-foreground">
+            Admin
+          </Link>
+          <span>© {year} hiperbrain</span>
+        </div>
       </div>
     </footer>
   );

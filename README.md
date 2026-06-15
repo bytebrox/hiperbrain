@@ -139,9 +139,30 @@ the shared memory:
 - an optional AI fact-check that screens new claims for obvious falsehoods - it
   *fails open*, so it only ever blocks confident mistakes, never your answers.
 
+Every stored fact also carries **provenance** - its source (`seed`, `community`
+or `api`), the wallet that taught it (for API writes), the fact-checker verdict
+and a confidence score - so the knowledge can be audited.
+
+**Contradictions are resolved, not averaged.** Single-valued relations (a country
+has one capital) can have only one correct answer. If a new fact conflicts with
+an existing one, the AI checker *adjudicates* which value is right: the winner
+stays `active`, the loser is marked `superseded`, and a tie is logged as
+`disputed`. Only `active` facts ever feed the vectors, so a wrong or unverified
+submission can never corrupt recall - and every resolved conflict is visible on
+the [`/logs`](https://www.hiperbrain.com/logs) page.
+
 Crucially, none of this touches how questions are answered: every answer is still
 pure vector algebra. The AI check only ever guards what gets *written* into the
 shared memory.
+
+## Measured, not claimed - the public benchmark
+
+Big claims deserve a number. The [`/benchmark`](https://www.hiperbrain.com/benchmark)
+page runs a fixed set of known-answer questions against the live brain in your
+browser and reports **accuracy**, **precision** (correct among confident answers)
+and the **confident-wrong rate** - the HDC analogue of hallucination. Because the
+brain abstains instead of guessing, that last number stays near zero: it says
+"I don't know" rather than inventing an answer.
 
 ---
 

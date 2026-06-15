@@ -1,16 +1,34 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useCollectiveBrain } from "@/lib/use-collective-brain";
-import { BrainCanvas } from "./brain-canvas";
+import { BrainCanvas, type BrainCanvasHandle } from "./brain-canvas";
 import { BrainLoader } from "./brain-loader";
 import { CommandBar } from "./command-bar";
 
 export function HomeHero() {
   const { brain, facts, status, teach, ready, resolvers } = useCollectiveBrain();
   const [value, setValue] = useState("");
+  const canvasRef = useRef<BrainCanvasHandle>(null);
+  const canvasAreaRef = useRef<HTMLDivElement>(null);
+  const commandAreaRef = useRef<HTMLDivElement>(null);
   const stats = brain.stats();
   const loading = status === "loading" || (status === "ready" && !ready);
+
+  // Clicking a node fills the input; clicking anywhere outside the brain and the
+  // command bar clears it again, so visitors are never stuck having to manually
+  // delete a query they no longer want.
+  useEffect(() => {
+    const onDocDown = (e: PointerEvent) => {
+      const target = e.target as Node | null;
+      if (!target) return;
+      if (canvasAreaRef.current?.contains(target)) return;
+      if (commandAreaRef.current?.contains(target)) return;
+      setValue("");
+    };
+    document.addEventListener("pointerdown", onDocDown);
+    return () => document.removeEventListener("pointerdown", onDocDown);
+  }, []);
 
   return (
     <div
@@ -18,10 +36,15 @@ export function HomeHero() {
       className="flex min-h-0 flex-1 flex-col items-center px-4 py-6 lg:py-4"
     >
       <div className="flex min-h-0 w-full max-w-2xl flex-1 flex-col lg:justify-center">
-        <div className="relative flex w-full flex-1 flex-col min-h-[240px] lg:min-h-0">
+        <div
+          ref={canvasAreaRef}
+          className="relative flex w-full flex-1 flex-col min-h-[240px] lg:min-h-0"
+        >
           <BrainCanvas
+            ref={canvasRef}
             facts={facts}
-            className="h-full min-h-[240px] w-full flex-1 cursor-crosshair lg:min-h-[160px]"
+            onNodeClick={(name) => setValue(`concepts like ${name}`)}
+            className="h-full min-h-[240px] w-full flex-1 cursor-pointer lg:min-h-[160px]"
           />
           {loading ? (
             <BrainLoader
@@ -41,13 +64,14 @@ export function HomeHero() {
           </p>
         </div>
 
-        <div className="shrink-0">
+        <div ref={commandAreaRef} className="shrink-0">
           <CommandBar
             value={value}
             onValueChange={setValue}
             brain={brain}
             resolvers={resolvers}
             onTeach={teach}
+            onTrace={(payload) => canvasRef.current?.trace(payload)}
           />
         </div>
 

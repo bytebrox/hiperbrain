@@ -17,5 +17,11 @@ export default function sitemap(): MetadataRoute.Sitemap {
       changeFrequency: "always",
       priority: 0.5,
     },
+    {
+      url: `${base}/benchmark`,
+      lastModified: now,
+      changeFrequency: "weekly",
+      priority: 0.6,
+    },
   ];
 }

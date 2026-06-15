@@ -1,12 +1,32 @@
 "use client";
 
-import { useEffect, useRef } from "react";
+import { forwardRef, useEffect, useImperativeHandle, useRef } from "react";
 import type { Fact } from "@hiperbrain/core";
+
+/** One step of a visible reasoning trace: a beam travels from `a` to `b`. */
+export interface TracePayload {
+  kind: "ask" | "analogy" | "neighbors";
+  /** Concepts to pull up and highlight. */
+  focus: string[];
+  /** The concept the brain settled on (gets the brightest flash + label). */
+  answer: string | null;
+  /** The relation deduced/used, for context (not drawn directly). */
+  relation: string | null;
+  /** Ordered [from, to] hops the "thought" travels along. */
+  segments: [string, string][];
+}
+
+export interface BrainCanvasHandle {
+  /** Light up the graph to show how a query was answered. */
+  trace: (payload: TracePayload) => void;
+}
 
 interface BrainCanvasProps {
   facts: Fact[];
   height?: number;
   className?: string;
+  /** Called when a visitor clicks a concept node. */
+  onNodeClick?: (name: string) => void;
 }
 
 interface Vec3 {
@@ -25,6 +45,16 @@ interface Pulse {
   b: string;
   t: number;
   speed: number;
+}
+
+/** A bright "thought" beam that visualises a reasoning hop between two nodes. */
+interface Beam {
+  a: string;
+  b: string;
+  t: number;
+  speed: number;
+  /** Mapping hops (analogy) read violet; answer hops read cyan-white. */
+  mapping: boolean;
 }
 
 interface Shock {
@@ -52,11 +82,19 @@ interface Graph {
   pulses: Pulse[];
   flash: Map<string, number>;
   shocks: Shock[];
+  // Reasoning trace state.
+  beams: Beam[];
+  focus: Set<string>;
+  answer: string | null;
+  focusTtl: number;
+  pinned: Set<string>;
 }
 
 const MAX_NODES = 80;
 const MAX_PULSES = 80;
 const MESH_DIST = 46;
+// How long (frames) a reasoning trace stays highlighted (~5.5s at 60fps).
+const FOCUS_FRAMES = 340;
 // Near (cyan) -> far (violet), matching the brand glow.
 const NEAR_RGB: [number, number, number] = [34, 211, 238];
 const FAR_RGB: [number, number, number] = [139, 92, 246];
@@ -72,6 +110,11 @@ function emptyGraph(): Graph {
     pulses: [],
     flash: new Map(),
     shocks: [],
+    beams: [],
+    focus: new Set(),
+    answer: null,
+    focusTtl: 0,
+    pinned: new Set(),
   };
 }
 
@@ -89,8 +132,12 @@ function hash01(s: string) {
   return (h >>> 0) / 4294967295;
 }
 
-/** Build a 3D graph from facts, keeping positions of nodes that still exist. */
-function buildGraph(facts: Fact[], prev: Graph): Graph {
+/**
+ * Build a 3D graph from facts, keeping positions of nodes that still exist.
+ * `pinned` names are always included even if they fall outside the top-degree
+ * set, so a reasoning trace can pull up the exact concepts it reasoned over.
+ */
+function buildGraph(facts: Fact[], prev: Graph, pinned: Set<string> = new Set()): Graph {
   const degree = new Map<string, number>();
   for (const f of facts) {
     degree.set(f.subject, (degree.get(f.subject) ?? 0) + 1);
@@ -99,9 +146,12 @@ function buildGraph(facts: Fact[], prev: Graph): Graph {
 
   const ranked = [...degree.entries()].sort((a, b) => b[1] - a[1]).slice(0, MAX_NODES);
   const keep = new Set(ranked.map(([name]) => name));
-  const nodes: Node[] = ranked.map(([name, d]) => ({
+  for (const name of pinned) if (degree.has(name)) keep.add(name);
+
+  const nodeNames = [...keep].sort((a, b) => (degree.get(b) ?? 0) - (degree.get(a) ?? 0));
+  const nodes: Node[] = nodeNames.map((name) => ({
     name,
-    degree: d,
+    degree: degree.get(name) ?? 1,
     phase: hash01(name) * Math.PI * 2,
   }));
 
@@ -138,16 +188,32 @@ function buildGraph(facts: Fact[], prev: Graph): Graph {
     pulses: prev.pulses,
     flash: prev.flash,
     shocks: [],
+    beams: prev.beams,
+    focus: prev.focus,
+    answer: prev.answer,
+    focusTtl: prev.focusTtl,
+    pinned: prev.pinned,
   };
 }
 
-export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps) {
+export const BrainCanvas = forwardRef<BrainCanvasHandle, BrainCanvasProps>(function BrainCanvas(
+  { facts, height = 360, className, onNodeClick },
+  ref,
+) {
   const wrapRef = useRef<HTMLDivElement>(null);
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const graphRef = useRef<Graph>(emptyGraph());
+  const factsRef = useRef<Fact[]>(facts);
+  const traceRef = useRef<((payload: TracePayload) => void) | null>(null);
+  // Keep the latest click handler reachable from the long-lived render loop.
+  const onNodeClickRef = useRef<typeof onNodeClick>(onNodeClick);
+  onNodeClickRef.current = onNodeClick;
+
+  useImperativeHandle(ref, () => ({ trace: (p) => traceRef.current?.(p) }), []);
 
   useEffect(() => {
-    graphRef.current = buildGraph(facts, graphRef.current);
+    factsRef.current = facts;
+    graphRef.current = buildGraph(facts, graphRef.current, graphRef.current.pinned);
   }, [facts]);
 
   useEffect(() => {
@@ -180,10 +246,6 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
     const observer = new ResizeObserver(resize);
     observer.observe(wrap);
 
-    // The background starfield now lives in the page-wide <Starfield /> layer
-    // (behind this transparent canvas), so the hero shares one continuous field
-    // with the rest of the site instead of drawing its own.
-
     // Camera rotation: gentle auto-spin plus eased mouse parallax.
     let yaw = 0;
     let pitch = -0.15;
@@ -196,6 +258,10 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
     let mx = -1;
     let my = -1;
     let inside = false;
+    // Click discrimination: remember where/when the press started.
+    let downX = 0;
+    let downY = 0;
+    let downAt = 0;
 
     const onPointer = (e: PointerEvent) => {
       const rect = wrap.getBoundingClientRect();
@@ -214,8 +280,40 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
       targetYaw = 0;
       targetPitch = -0.15;
     };
+
+    // Find the concept node closest to a screen point, within a tap radius.
+    const nodeAt = (sx: number, sy: number): string | null => {
+      const g = graphRef.current;
+      let best: string | null = null;
+      let bestD = 26 * 26;
+      for (const node of g.nodes) {
+        const p = project(g.pos.get(node.name)!);
+        const d = (p.sx - sx) ** 2 + (p.sy - sy) ** 2;
+        if (d < bestD) {
+          bestD = d;
+          best = node.name;
+        }
+      }
+      return best;
+    };
+
+    const onDown = (e: PointerEvent) => {
+      downX = e.clientX;
+      downY = e.clientY;
+      downAt = Date.now();
+    };
+    const onUp = (e: PointerEvent) => {
+      const moved = Math.hypot(e.clientX - downX, e.clientY - downY);
+      if (moved > 6 || Date.now() - downAt > 500) return;
+      const rect = wrap.getBoundingClientRect();
+      const hit = nodeAt(e.clientX - rect.left, e.clientY - rect.top);
+      if (hit) onNodeClickRef.current?.(hit);
+    };
+
     wrap.addEventListener("pointermove", onPointer);
     wrap.addEventListener("pointerleave", onLeave);
+    wrap.addEventListener("pointerdown", onDown);
+    wrap.addEventListener("pointerup", onUp);
 
     const bound = () => Math.max(70, Math.min(width, vh) * 0.4);
 
@@ -259,6 +357,32 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
         g.pulses.push({ a: name, b: to, t: 0, speed: 0.012 + Math.random() * 0.016 });
       }
     }
+
+    // Imperative entry point: pull up the reasoned concepts and animate the hops.
+    traceRef.current = (payload: TracePayload) => {
+      const names = Array.from(
+        new Set([...payload.focus, payload.answer].filter((n): n is string => !!n)),
+      );
+      if (names.length === 0) return;
+      const pinned = new Set(names);
+      graphRef.current.pinned = pinned;
+      graphRef.current = buildGraph(factsRef.current, graphRef.current, pinned);
+      const g = graphRef.current;
+      g.pinned = pinned;
+      g.focus = new Set(names);
+      g.answer = payload.answer;
+      g.focusTtl = FOCUS_FRAMES;
+      g.beams = [];
+      // Stagger the hops so the thought reads as a sequence, not a flash.
+      let delay = 0;
+      for (const [a, b] of payload.segments) {
+        if (!g.pos.has(a) || !g.pos.has(b)) continue;
+        const mapping = payload.kind === "analogy" && delay === 0;
+        g.beams.push({ a, b, t: -delay, speed: 0.02, mapping });
+        delay += 0.55;
+      }
+      for (const n of names) g.flash.set(n, 1);
+    };
 
     const step = () => {
       const g = graphRef.current;
@@ -342,11 +466,36 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
         }
       }
 
-      // Decay node flashes.
+      // Reasoning focus countdown; clear everything when it lapses.
+      if (g.focusTtl > 0) {
+        g.focusTtl -= 1;
+        if (g.focusTtl === 0) {
+          g.focus = new Set();
+          g.answer = null;
+          g.beams = [];
+          g.pinned = new Set();
+        }
+      }
+
+      // Advance reasoning beams; on arrival, flash the destination concept.
+      if (g.beams.length > 0) {
+        const next: Beam[] = [];
+        for (const beam of g.beams) {
+          beam.t += beam.speed;
+          if (beam.t >= 1) {
+            g.flash.set(beam.b, 1);
+            continue;
+          }
+          next.push(beam);
+        }
+        g.beams = next;
+      }
+
+      // Decay node flashes (focus nodes are kept lit separately while active).
       for (const [name, f] of g.flash) {
         const nf = f * 0.92;
-        if (nf < 0.02) g.flash.delete(name);
-        else g.flash.set(name, nf);
+        if (nf < 0.02 && !(g.focusTtl > 0 && g.focus.has(name))) g.flash.delete(name);
+        else g.flash.set(name, Math.max(nf, g.focusTtl > 0 && g.focus.has(name) ? 0.5 : 0));
       }
 
       // Advance pulses; on arrival, flash the target and propagate to neighbors.
@@ -371,8 +520,9 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
         }
         g.pulses = next;
 
-        // Keep a baseline of spontaneous activity.
-        while (g.pulses.length < 8) {
+        // Keep a baseline of spontaneous activity (paused during a focused trace
+        // so the reasoning beams stand out).
+        while (g.pulses.length < 8 && g.focusTtl <= 0) {
           const node = g.nodes[Math.floor(Math.random() * g.nodes.length)];
           ignite(g, node.name, 1);
           if (!g.adj.get(node.name)?.length) break;
@@ -380,7 +530,7 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
 
         // Periodic synapse burst from a hub + an expanding shockwave.
         burstIn -= 1;
-        if (burstIn <= 0 && !reduced) {
+        if (burstIn <= 0 && !reduced && g.focusTtl <= 0) {
           burstIn = 220 + Math.floor(Math.random() * 240);
           const hub = g.nodes[Math.floor(Math.random() * Math.min(10, g.nodes.length))];
           ignite(g, hub.name, 6);
@@ -397,9 +547,24 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
       g.shocks = g.shocks.filter((s) => s.life > 0);
     };
 
+    // Perpendicular-offset control point for a curved beam between two points.
+    const controlPoint = (
+      ax: number,
+      ay: number,
+      bx: number,
+      by: number,
+      sideKey: string,
+    ) => {
+      const ex = bx - ax;
+      const ey = by - ay;
+      const len = Math.hypot(ex, ey) || 1;
+      const side = hash01(sideKey) > 0.5 ? 1 : -1;
+      const off = len * 0.16 * side;
+      return { cx: (ax + bx) / 2 + (-ey / len) * off, cy: (ay + by) / 2 + (ex / len) * off };
+    };
+
     const draw = () => {
       const g = graphRef.current;
-      const B = bound();
 
       // Fade the previous frame toward transparent for motion trails. Using
       // destination-out keeps the canvas see-through, so it blends seamlessly
@@ -437,11 +602,18 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
           }
         }
       }
-      const hoverSet = new Set<string>();
-      if (hovered) {
-        hoverSet.add(hovered);
-        for (const nb of g.adj.get(hovered) ?? []) hoverSet.add(nb);
+
+      // A reasoning trace takes precedence over hover for what is "active".
+      const focusActive = g.focusTtl > 0 && g.focus.size > 0;
+      const activeSet = new Set<string>();
+      if (focusActive) {
+        for (const name of g.focus) activeSet.add(name);
+      } else if (hovered) {
+        activeSet.add(hovered);
+        for (const nb of g.adj.get(hovered) ?? []) activeSet.add(nb);
       }
+      const someActive = activeSet.size > 0;
+      const dimOthers = focusActive ? 0.22 : 0.4;
 
       // Constellation mesh: faint links between nearby nodes (depth of the net).
       ctx.lineWidth = 0.4;
@@ -472,19 +644,8 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
         const [a, b] = n1 < n2 ? [n1, n2] : [n2, n1];
         const pa = projOf.get(a)!;
         const pb = projOf.get(b)!;
-        const ex = pb.sx - pa.sx;
-        const ey = pb.sy - pa.sy;
-        const len = Math.hypot(ex, ey) || 1;
-        const side = hash01(`${a}|${b}`) > 0.5 ? 1 : -1;
-        const off = len * 0.16 * side;
-        return {
-          a,
-          b,
-          pa,
-          pb,
-          cx: (pa.sx + pb.sx) / 2 + (-ey / len) * off,
-          cy: (pa.sy + pb.sy) / 2 + (ex / len) * off,
-        };
+        const { cx, cy } = controlPoint(pa.sx, pa.sy, pb.sx, pb.sy, `${a}|${b}`);
+        return { a, b, pa, pb, cx, cy };
       };
 
       // Edges, sorted far -> near, drawn as glowing curves.
@@ -497,8 +658,8 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
 
       for (const { c, depth, e } of projEdges) {
         const t = (c.pa.depth + c.pb.depth) / 2;
-        const hot = hoverSet.has(e.a) && hoverSet.has(e.b);
-        const dim = hovered && !hot ? 0.3 : 1;
+        const hot = activeSet.has(e.a) && activeSet.has(e.b);
+        const dim = someActive && !hot ? dimOthers : 1;
         const alpha = (hot ? 0.6 : 0.22) * (1 - depth * 0.7) * dim;
         ctx.strokeStyle = mix(t, alpha);
         ctx.lineWidth = Math.max(0.4, (hot ? 1.6 : 0.9) * ((c.pa.persp + c.pb.persp) / 2));
@@ -527,6 +688,39 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
         ctx.fill();
       }
 
+      // Reasoning beams: bright thought lines connecting the reasoned concepts.
+      for (const beam of g.beams) {
+        const pa = projOf.get(beam.a);
+        const pb = projOf.get(beam.b);
+        if (!pa || !pb) continue;
+        const { cx, cy } = controlPoint(pa.sx, pa.sy, pb.sx, pb.sy, `beam|${beam.a}|${beam.b}`);
+        const head = beam.mapping ? [196, 181, 253] : [224, 242, 254];
+        const trail = beam.mapping ? [139, 92, 246] : [56, 189, 248];
+
+        // Faint full beam line behind the travelling head.
+        ctx.strokeStyle = `rgba(${trail[0]}, ${trail[1]}, ${trail[2]}, 0.28)`;
+        ctx.lineWidth = 1.4;
+        ctx.beginPath();
+        ctx.moveTo(pa.sx, pa.sy);
+        ctx.quadraticCurveTo(cx, cy, pb.sx, pb.sy);
+        ctx.stroke();
+
+        const tt = Math.max(0, Math.min(1, beam.t));
+        if (beam.t < 0) continue;
+        const it = 1 - tt;
+        const px = it * it * pa.sx + 2 * it * tt * cx + tt * tt * pb.sx;
+        const py = it * it * pa.sy + 2 * it * tt * cy + tt * tt * pb.sy;
+        const radius = 7;
+        const glow = ctx.createRadialGradient(px, py, 0, px, py, radius * 2.4);
+        glow.addColorStop(0, `rgba(${head[0]}, ${head[1]}, ${head[2]}, 0.98)`);
+        glow.addColorStop(0.4, `rgba(${trail[0]}, ${trail[1]}, ${trail[2]}, 0.7)`);
+        glow.addColorStop(1, `rgba(${trail[0]}, ${trail[1]}, ${trail[2]}, 0)`);
+        ctx.fillStyle = glow;
+        ctx.beginPath();
+        ctx.arc(px, py, radius * 2.4, 0, Math.PI * 2);
+        ctx.fill();
+      }
+
       // Nodes, sorted far -> near.
       const projNodes = g.nodes
         .map((node) => ({ node, p: projOf.get(node.name)! }))
@@ -536,9 +730,12 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
         const t = p.depth;
         const flash = g.flash.get(node.name) ?? 0;
         const breath = 1 + 0.12 * Math.sin(time * 0.05 + node.phase);
-        const hot = hoverSet.has(node.name);
-        const dim = hovered && !hot ? 0.4 : 1;
-        const base = Math.min(6, 2 + node.degree * 0.6) * p.persp * breath * (hot ? 1.4 : 1);
+        const hot = activeSet.has(node.name);
+        const isAnswer = focusActive && node.name === g.answer;
+        const dim = someActive && !hot ? dimOthers : 1;
+        const base =
+          Math.min(6, 2 + node.degree * 0.6) * p.persp * breath * (hot ? 1.45 : 1) *
+          (isAnswer ? 1.25 : 1);
         const coreAlpha = (0.95 - 0.5 * t) * dim;
 
         // Tighter halo so nodes read as crisp points instead of a hazy bloom.
@@ -551,13 +748,14 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
         ctx.arc(p.sx, p.sy, glowR, 0, Math.PI * 2);
         ctx.fill();
 
-        ctx.fillStyle = flash > 0.1 ? `rgba(255, 255, 255, ${coreAlpha})` : mix(t, coreAlpha);
+        ctx.fillStyle =
+          isAnswer || flash > 0.1 ? `rgba(255, 255, 255, ${coreAlpha})` : mix(t, coreAlpha);
         ctx.beginPath();
         ctx.arc(p.sx, p.sy, base, 0, Math.PI * 2);
         ctx.fill();
       }
 
-      // Shockwaves (synapse bursts + click ripples).
+      // Shockwaves (synapse bursts).
       for (const s of g.shocks) {
         ctx.strokeStyle = mix(s.hue, 0.4 * s.life);
         ctx.lineWidth = 2 * s.life;
@@ -570,12 +768,15 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
       ctx.globalCompositeOperation = "source-over";
       for (const { node, p } of projNodes) {
         const t = p.depth;
-        const hot = hoverSet.has(node.name);
+        const hot = activeSet.has(node.name);
+        const isAnswer = focusActive && node.name === g.answer;
         if ((g.labels.has(node.name) && t < 0.5) || hot) {
           const base = Math.min(7, 2 + node.degree * 0.7) * p.persp;
-          ctx.fillStyle = hot
-            ? "rgba(236, 245, 255, 0.95)"
-            : `rgba(231, 236, 243, ${0.6 * (1 - t * 1.6)})`;
+          ctx.fillStyle = isAnswer
+            ? "rgba(165, 243, 252, 0.98)"
+            : hot
+              ? "rgba(236, 245, 255, 0.95)"
+              : `rgba(231, 236, 243, ${0.6 * (1 - t * 1.6)})`;
           ctx.font = `${hot ? "12px" : "11px"} ui-monospace, monospace`;
           ctx.fillText(node.name, p.sx + base + 4, p.sy + 3);
         }
@@ -597,6 +798,9 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
       observer.disconnect();
       wrap.removeEventListener("pointermove", onPointer);
       wrap.removeEventListener("pointerleave", onLeave);
+      wrap.removeEventListener("pointerdown", onDown);
+      wrap.removeEventListener("pointerup", onUp);
+      traceRef.current = null;
     };
   }, [height]);
 
@@ -605,4 +809,4 @@ export function BrainCanvas({ facts, height = 360, className }: BrainCanvasProps
       <canvas ref={canvasRef} className="block" aria-hidden />
     </div>
   );
-}
+});

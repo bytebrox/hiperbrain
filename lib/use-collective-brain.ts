@@ -20,7 +20,7 @@ interface BrainResponse {
 
 export interface TeachOutcome {
   ok: boolean;
-  status: "added" | "duplicate" | "error";
+  status: "added" | "replaced" | "duplicate" | "superseded" | "disputed" | "error";
   message: string;
 }
 
@@ -46,6 +46,18 @@ export function useCollectiveBrain() {
     setFacts((prev) => {
       const k = keyOf(fact);
       return prev.some((f) => keyOf(f) === k) ? prev : [...prev, fact];
+    });
+  }, []);
+
+  // Replace the active value for a subject+relation (used when a contradiction
+  // is resolved in favour of the new fact, so recall reflects it immediately).
+  const replaceFact = useCallback((fact: TimedFact) => {
+    const sr = `${fact.subject.toLowerCase()}|${fact.relation.toLowerCase()}`;
+    setFacts((prev) => {
+      const kept = prev.filter(
+        (f) => `${f.subject.toLowerCase()}|${f.relation.toLowerCase()}` !== sr,
+      );
+      return [...kept, fact];
     });
   }, []);
 
@@ -165,16 +177,39 @@ export function useCollectiveBrain() {
         if (!res.ok) {
           return { ok: false, status: "error", message: data.error ?? "Something went wrong." };
         }
-        if (data.status === "duplicate") {
-          return { ok: true, status: "duplicate", message: "The brain already knew that." };
+
+        const reason = typeof data.reason === "string" ? data.reason : "";
+        switch (data.status) {
+          case "duplicate":
+            return { ok: true, status: "duplicate", message: "The brain already knew that." };
+          case "superseded":
+            return {
+              ok: true,
+              status: "superseded",
+              message: `The brain kept its current answer.${reason ? ` ${reason}` : ""}`,
+            };
+          case "disputed":
+            return {
+              ok: true,
+              status: "disputed",
+              message: `Noted as disputed - the brain isn't sure yet.${reason ? ` ${reason}` : ""}`,
+            };
+          case "replaced":
+            replaceFact({ ...(data.fact as Fact), ts: Date.now() });
+            return {
+              ok: true,
+              status: "replaced",
+              message: `The brain changed its mind.${reason ? ` ${reason}` : ""}`,
+            };
+          default:
+            addFact({ ...(data.fact as Fact), ts: Date.now() });
+            return { ok: true, status: "added", message: "Learned. The brain just grew." };
         }
-        addFact({ ...(data.fact as Fact), ts: Date.now() });
-        return { ok: true, status: "added", message: "Learned. The brain just grew." };
       } catch {
         return { ok: false, status: "error", message: "Network error. Please try again." };
       }
     },
-    [addFact],
+    [addFact, replaceFact],
   );
 
   return { facts, brain, status, capacity, teach, ready, resolvers };

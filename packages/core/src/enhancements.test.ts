@@ -99,6 +99,31 @@ describe("calibrated confidence", () => {
   });
 });
 
+describe("recall capacity (per-subject record path)", () => {
+  it("stays confident and correct on a heavily saturated relation", () => {
+    const brain = new KnowledgeBrain();
+    brain.learn({ subject: "France", relation: "currency", object: "Euro" });
+    // A large crowd of other facts sharing the SAME relation. The old
+    // relation-bundle path would drown out the single answer (sigma ~ sqrt(D/N)
+    // drops below the threshold); the per-subject record keeps it sharp.
+    for (let i = 0; i < 3000; i++) {
+      brain.learn({ subject: `Country${i}`, relation: "currency", object: `Money${i}` });
+    }
+    const matches = brain.ask("France", "currency", 4);
+    expect(matches[0]?.name).toBe("Euro");
+    expect(recallConfidence(matches).confident).toBe(true);
+  });
+
+  it("still answers via the relation bundle for a subject with a busy record", () => {
+    const brain = new KnowledgeBrain();
+    brain.learn({ subject: "France", relation: "capital", object: "Paris" });
+    brain.learn({ subject: "Germany", relation: "capital", object: "Berlin" });
+    const matches = brain.ask("France", "capital", 4);
+    expect(matches[0]?.name).toBe("Paris");
+    expect(recallConfidence(matches).confident).toBe(true);
+  });
+});
+
 describe("typo-tolerant resolver", () => {
   it("maps a misspelling to the closest known concept", () => {
     const resolver = new ConceptResolver(["France", "Germany", "Japan", "Brazil"]);

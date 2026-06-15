@@ -9,14 +9,9 @@
 
 import { NextResponse } from "next/server";
 import { validateFact } from "@/lib/server/moderation";
-import {
-  getFactsCached,
-  getStore,
-  invalidateFactsCache,
-  MAX_FACTS,
-} from "@/lib/server/store";
+import { getFactsCached, invalidateFactsCache, MAX_FACTS } from "@/lib/server/store";
 import { checkRateLimit } from "@/lib/server/ratelimit";
-import { isVerificationEnabled, verifyFact } from "@/lib/server/verify-fact";
+import { landedActive, teachFact } from "@/lib/server/teach";
 
 export const dynamic = "force-dynamic";
 
@@ -64,41 +59,46 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: result.error }, { status: 400 });
   }
 
-  // Optional factual check: reject only claims a fact-checker is confident are
-  // wrong. "uncertain" (and any checker outage) is allowed through.
-  if (isVerificationEnabled()) {
-    const check = await verifyFact(result.fact);
-    if (check.verdict === "false") {
+  // Verify, resolve contradictions and store. Only confident-false is rejected;
+  // conflicts on single-valued relations are adjudicated rather than blocked.
+  const outcome = await teachFact(result.fact, { source: "community" });
+  if (landedActive(outcome)) invalidateFactsCache();
+
+  switch (outcome.kind) {
+    case "rejected":
       return NextResponse.json(
-        {
-          error: `That doesn't appear to be correct, so it wasn't added: ${check.reason}`,
-          verdict: check.verdict,
-        },
+        { error: `That doesn't appear to be correct, so it wasn't added: ${outcome.reason}`, verdict: "false" },
         { status: 422 },
       );
-    }
+    case "full":
+      return NextResponse.json(
+        { error: `The brain is at capacity (${MAX_FACTS} facts).` },
+        { status: 409 },
+      );
+    case "duplicate":
+      return NextResponse.json(
+        { status: "duplicate", fact: outcome.fact, total: outcome.total },
+        { status: 200 },
+      );
+    case "superseded":
+      return NextResponse.json(
+        { status: "superseded", fact: outcome.fact, reason: outcome.reason, total: outcome.total },
+        { status: 200 },
+      );
+    case "disputed":
+      return NextResponse.json(
+        { status: "disputed", fact: outcome.fact, reason: outcome.reason, total: outcome.total },
+        { status: 200 },
+      );
+    case "replaced":
+      return NextResponse.json(
+        { status: "replaced", fact: outcome.fact, reason: outcome.reason, total: outcome.total },
+        { status: 201 },
+      );
+    default:
+      return NextResponse.json(
+        { status: "added", fact: outcome.fact, total: outcome.total },
+        { status: 201 },
+      );
   }
-
-  const store = getStore();
-  await store.ensureSeeded();
-  const added = await store.addFact(result.fact);
-
-  if (added.status === "full") {
-    return NextResponse.json(
-      { error: `The brain is at capacity (${MAX_FACTS} facts).` },
-      { status: 409 },
-    );
-  }
-  if (added.status === "duplicate") {
-    return NextResponse.json(
-      { status: "duplicate", fact: result.fact, total: added.total },
-      { status: 200 },
-    );
-  }
-
-  invalidateFactsCache();
-  return NextResponse.json(
-    { status: "added", fact: result.fact, total: added.total },
-    { status: 201 },
-  );
 }

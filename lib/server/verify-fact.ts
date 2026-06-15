@@ -40,6 +40,20 @@ When unsure, prefer "uncertain" over "false". Only use "false" when you are conf
 
 Respond ONLY as compact JSON: {"verdict":"true"|"false"|"uncertain","reason":"<one short sentence>"}.`;
 
+const ADJUDICATE_SYSTEM_PROMPT = `You are a strict but fair fact-checker resolving a conflict in a public knowledge base.
+For a single subject and relation there can be only ONE correct object (e.g. a country has one capital).
+You are given the value the knowledge base currently holds ("existing") and a newly submitted value ("new").
+
+Decide which value is factually correct according to well-established, general world knowledge:
+- "existing": the value already stored is correct (and the new one is wrong).
+- "new": the newly submitted value is correct (and the stored one is wrong/outdated).
+- "uncertain": you cannot confidently tell which is right, both could be valid phrasings of the same answer, or neither is clearly correct.
+
+Be tolerant of spelling, phrasing and language; judge the underlying real-world claim, not the wording.
+When unsure, prefer "uncertain". 
+
+Respond ONLY as compact JSON: {"winner":"existing"|"new"|"uncertain","reason":"<one short sentence>"}.`;
+
 /** Whether fact verification is configured (an OpenAI key is present). */
 export function isVerificationEnabled(): boolean {
   return Boolean(process.env.OPENAI_API_KEY);
@@ -50,14 +64,13 @@ function normalizeVerdict(value: unknown): Verdict {
 }
 
 /**
- * Ask the model whether a fact is correct. Never throws: on any failure it
- * resolves to an "uncertain" verdict so the caller can decide to let it through.
+ * Low-level call to the chat completions API that returns the assistant's
+ * message content string, or null on any failure. Never throws.
  */
-export async function verifyFact(fact: Fact): Promise<VerifyResult> {
+async function callModel(systemPrompt: string, userContent: string): Promise<string | null> {
   const apiKey = process.env.OPENAI_API_KEY;
-  if (!apiKey) return { verdict: "uncertain", reason: "Verification is disabled." };
+  if (!apiKey) return null;
 
-  const claim = `The ${fact.relation} of ${fact.subject} is ${fact.object}.`;
   const payload = JSON.stringify({
     model: MODEL,
     // gpt-5 family: reasoning tokens count toward the completion budget, so keep
@@ -66,11 +79,8 @@ export async function verifyFact(fact: Fact): Promise<VerifyResult> {
     reasoning_effort: "low",
     response_format: { type: "json_object" },
     messages: [
-      { role: "system", content: SYSTEM_PROMPT },
-      {
-        role: "user",
-        content: `Claim: "${claim}"\nTriple: subject="${fact.subject}", relation="${fact.relation}", object="${fact.object}"`,
-      },
+      { role: "system", content: systemPrompt },
+      { role: "user", content: userContent },
     ],
   });
 
@@ -91,16 +101,34 @@ export async function verifyFact(fact: Fact): Promise<VerifyResult> {
       if (attempt === 0) await new Promise((r) => setTimeout(r, 700));
     }
 
-    if (!res || !res.ok) {
-      return { verdict: "uncertain", reason: `Checker unavailable (${res?.status ?? "no response"}).` };
-    }
-
+    if (!res || !res.ok) return null;
     const data = await res.json();
     const content: unknown = data?.choices?.[0]?.message?.content;
-    if (typeof content !== "string") {
-      return { verdict: "uncertain", reason: "Checker returned no content." };
-    }
+    return typeof content === "string" ? content : null;
+  } catch {
+    return null;
+  }
+}
 
+/**
+ * Ask the model whether a fact is correct. Never throws: on any failure it
+ * resolves to an "uncertain" verdict so the caller can decide to let it through.
+ */
+export async function verifyFact(fact: Fact): Promise<VerifyResult> {
+  if (!process.env.OPENAI_API_KEY) {
+    return { verdict: "uncertain", reason: "Verification is disabled." };
+  }
+
+  const claim = `The ${fact.relation} of ${fact.subject} is ${fact.object}.`;
+  const content = await callModel(
+    SYSTEM_PROMPT,
+    `Claim: "${claim}"\nTriple: subject="${fact.subject}", relation="${fact.relation}", object="${fact.object}"`,
+  );
+  if (content === null) {
+    return { verdict: "uncertain", reason: "Checker unavailable." };
+  }
+
+  try {
     const parsed = JSON.parse(content) as { verdict?: unknown; reason?: unknown };
     const verdict = normalizeVerdict(parsed.verdict);
     const reason =
@@ -109,6 +137,54 @@ export async function verifyFact(fact: Fact): Promise<VerifyResult> {
         : "No reason given.";
     return { verdict, reason };
   } catch {
-    return { verdict: "uncertain", reason: "Checker error or timeout." };
+    return { verdict: "uncertain", reason: "Checker returned no content." };
+  }
+}
+
+export type Winner = "existing" | "new" | "uncertain";
+
+export interface AdjudicateResult {
+  winner: Winner;
+  reason: string;
+}
+
+function normalizeWinner(value: unknown): Winner {
+  return value === "existing" || value === "new" ? value : "uncertain";
+}
+
+/**
+ * Resolve a contradiction on a functional relation: given the value currently
+ * stored and a conflicting new value, decide which is correct. Fail-open: on
+ * any error (or no API key) it returns "uncertain", so the caller keeps both
+ * facts as disputed rather than guessing.
+ */
+export async function adjudicate(
+  subject: string,
+  relation: string,
+  existingObject: string,
+  newObject: string,
+): Promise<AdjudicateResult> {
+  if (!process.env.OPENAI_API_KEY) {
+    return { winner: "uncertain", reason: "Adjudication is disabled." };
+  }
+
+  const content = await callModel(
+    ADJUDICATE_SYSTEM_PROMPT,
+    `Subject: "${subject}"\nRelation: "${relation}"\nExisting value: "${existingObject}"\nNew value: "${newObject}"\nWhich value is the correct ${relation} of ${subject}?`,
+  );
+  if (content === null) {
+    return { winner: "uncertain", reason: "Adjudicator unavailable." };
+  }
+
+  try {
+    const parsed = JSON.parse(content) as { winner?: unknown; reason?: unknown };
+    const winner = normalizeWinner(parsed.winner);
+    const reason =
+      typeof parsed.reason === "string" && parsed.reason.trim()
+        ? parsed.reason.trim()
+        : "No reason given.";
+    return { winner, reason };
+  } catch {
+    return { winner: "uncertain", reason: "Adjudicator returned no content." };
   }
 }

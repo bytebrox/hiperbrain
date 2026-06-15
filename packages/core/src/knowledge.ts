@@ -203,13 +203,48 @@ export class KnowledgeBrain {
     return matches.slice(0, k);
   }
 
-  /** Answer "what is the <relation> of <subject>?" */
+  /**
+   * Answer "what is the <relation> of <subject>?"
+   *
+   * Two recall paths, strongest wins:
+   *
+   *  1. Per-subject record (preferred). The object is recovered from the
+   *     subject's own holographic record via `record(subject) ⊗ relation`. Its
+   *     bundle load is only the number of facts about THIS subject (usually a
+   *     handful), so recall stays sharp no matter how many facts share the
+   *     relation across the whole brain. This is what keeps "currency of France"
+   *     answerable even when the brain knows thousands of currencies.
+   *  2. Relation bundle (fallback). The original `subject ⊗ relationMemory`
+   *     path, for subjects we have no record for or when it happens to be
+   *     stronger.
+   */
   ask(subject: string, relation: string, k = 5): Match[] {
     const bucket = this.buckets.get(relation);
     if (!bucket) return [];
-    const query = bind(this.symbol(subject), this.memory(bucket));
     const candidates = [...bucket.objects].filter((c) => c !== subject);
-    return this.cleanup(query, candidates, k);
+    if (candidates.length === 0) return [];
+
+    const rec = this.record(subject);
+    const viaRecord = rec
+      ? this.cleanup(bind(rec, this.symbol(relation)), candidates, k)
+      : null;
+    // Fast path: a confident hit from the subject's record needs nothing more.
+    if (viaRecord && recallConfidence(viaRecord, this.dimensions).confident) {
+      return viaRecord;
+    }
+
+    const viaBucket = this.cleanup(
+      bind(this.symbol(subject), this.memory(bucket)),
+      candidates,
+      k,
+    );
+    if (!viaRecord) return viaBucket;
+
+    // Otherwise keep whichever path has the stronger signal, so we never do
+    // worse than the original relation-bundle recall.
+    const sRecord = recallConfidence(viaRecord, this.dimensions).sigma;
+    const sBucket = recallConfidence(viaBucket, this.dimensions).sigma;
+    return sRecord >= sBucket ? viaRecord : viaBucket;
   }
 
   /** Answer the reverse question: "what is the <relation> for <object>?" */

@@ -2,8 +2,9 @@
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
 import { type KnowledgeBrain, recallConfidence } from "@hiperbrain/core";
-import { parseCommand } from "@/lib/parse-command";
+import { parseCommand, type Command } from "@/lib/parse-command";
 import type { BrainResolvers, TeachOutcome } from "@/lib/use-collective-brain";
+import type { TracePayload } from "./brain-canvas";
 import {
   type Example,
   type ExampleKind,
@@ -20,6 +21,8 @@ interface CommandBarProps {
   brain: KnowledgeBrain;
   resolvers: BrainResolvers | null;
   onTeach: (fact: { subject: string; relation: string; object: string }) => Promise<TeachOutcome>;
+  /** Fires when a query resolves confidently, so the graph can visualise it. */
+  onTrace?: (payload: TracePayload) => void;
 }
 
 const MODES: ExampleKind[] = ["ask", "teach", "reason"];
@@ -55,7 +58,14 @@ function usePrefersReducedMotion(): boolean {
   );
 }
 
-export function CommandBar({ value, onValueChange, brain, resolvers, onTeach }: CommandBarProps) {
+export function CommandBar({
+  value,
+  onValueChange,
+  brain,
+  resolvers,
+  onTeach,
+  onTrace,
+}: CommandBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
   const [taught, setTaught] = useState<TeachOutcome | null>(null);
@@ -80,6 +90,20 @@ export function CommandBar({ value, onValueChange, brain, resolvers, onTeach }: 
     const id = requestAnimationFrame(() => setChips(pickExamples(6)));
     return () => cancelAnimationFrame(id);
   }, []);
+
+  // When a query resolves to a confident answer, hand the graph the concepts it
+  // reasoned over so it can light up the actual computation. Debounced so fast
+  // typing doesn't thrash the animation.
+  useEffect(() => {
+    if (!onTrace) return;
+    const id = window.setTimeout(() => {
+      const payload = buildTrace(brain, resolvers, cmd);
+      if (payload) onTrace(payload);
+    }, 220);
+    return () => window.clearTimeout(id);
+    // `cmd` is derived from `value`; depending on `value` covers it.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [value, brain, resolvers, onTrace]);
 
   // Typewriter placeholder. When inactive we simply stop; `typed` is ignored by
   // the placeholder unless active, so there is no need to reset it here.
@@ -136,7 +160,7 @@ export function CommandBar({ value, onValueChange, brain, resolvers, onTeach }: 
       const outcome = await onTeach(cmd);
       setPending(false);
       setTaught(outcome);
-      if (outcome.status === "added") {
+      if (outcome.status === "added" || outcome.status === "replaced") {
         setTaughtForValue("");
         onValueChange("");
       } else {
@@ -170,24 +194,40 @@ export function CommandBar({ value, onValueChange, brain, resolvers, onTeach }: 
         })}
       </div>
 
-      <input
-        ref={inputRef}
-        value={value}
-        onChange={(e) => {
-          onValueChange(e.target.value);
-          setTaught(null);
-        }}
-        onFocus={() => setFocused(true)}
-        onBlur={() => setFocused(false)}
-        onKeyDown={(e) => {
-          if (e.key === "Enter") onSubmit();
-        }}
-        autoFocus
-        spellCheck={false}
-        placeholder={placeholder}
-        aria-label="Ask or teach the brain"
-        className="w-full rounded-sm border border-border bg-surface/70 px-4 py-3.5 text-center text-base text-foreground outline-none transition-colors placeholder:text-muted/40 focus:border-accent/60 sm:px-6 sm:py-4 sm:text-lg"
-      />
+      <div className="relative">
+        <input
+          ref={inputRef}
+          value={value}
+          onChange={(e) => {
+            onValueChange(e.target.value);
+            setTaught(null);
+          }}
+          onFocus={() => setFocused(true)}
+          onBlur={() => setFocused(false)}
+          onKeyDown={(e) => {
+            if (e.key === "Enter") onSubmit();
+          }}
+          autoFocus
+          spellCheck={false}
+          placeholder={placeholder}
+          aria-label="Ask or teach the brain"
+          className="w-full rounded-sm border border-border bg-surface/70 px-12 py-3.5 text-center text-base text-foreground outline-none transition-colors placeholder:text-muted/40 focus:border-accent/60 sm:px-14 sm:py-4 sm:text-lg"
+        />
+        <button
+          type="button"
+          onClick={onSubmit}
+          disabled={pending || value.trim() === ""}
+          aria-label="Send"
+          title="Send (or press Enter)"
+          className="absolute right-2 top-1/2 flex h-9 w-9 -translate-y-1/2 items-center justify-center rounded-sm border border-border text-muted transition-colors hover:border-accent/60 hover:text-foreground disabled:opacity-30 disabled:hover:border-border disabled:hover:text-muted sm:right-2.5 sm:h-10 sm:w-10"
+        >
+          {pending ? (
+            <Spinner className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+          ) : (
+            <SendIcon className="h-4 w-4 sm:h-[18px] sm:w-[18px]" />
+          )}
+        </button>
+      </div>
 
       <div className="mt-4 min-h-[4.5rem] sm:mt-6 sm:min-h-[5.5rem]">
         <Result
@@ -225,6 +265,49 @@ export function CommandBar({ value, onValueChange, brain, resolvers, onTeach }: 
         </button>
       </div>
     </div>
+  );
+}
+
+function Spinner({ className }: { className?: string }) {
+  return (
+    <svg
+      className={`animate-spin ${className ?? ""}`}
+      viewBox="0 0 24 24"
+      fill="none"
+      aria-hidden
+    >
+      <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth={2.5} opacity={0.2} />
+      <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" />
+    </svg>
+  );
+}
+
+/** Three dots that fade in sequence, to signal ongoing work. */
+function AnimatedDots() {
+  return (
+    <span className="inline-flex">
+      <span className="animate-pulse [animation-delay:0ms]">.</span>
+      <span className="animate-pulse [animation-delay:200ms]">.</span>
+      <span className="animate-pulse [animation-delay:400ms]">.</span>
+    </span>
+  );
+}
+
+function SendIcon({ className }: { className?: string }) {
+  return (
+    <svg
+      className={className}
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth={2}
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden
+    >
+      <path d="M5 12h13" />
+      <path d="M12 5l7 7-7 7" />
+    </svg>
   );
 }
 
@@ -275,7 +358,12 @@ function Result({
   onPick: (text: string) => void;
 }) {
   if (taught) {
-    const tone = taught.status === "error" ? "text-negative" : "text-positive";
+    const tone =
+      taught.status === "error"
+        ? "text-negative"
+        : taught.status === "added" || taught.status === "replaced"
+          ? "text-positive"
+          : "text-muted";
     return <p className={`text-center text-sm ${tone}`}>{taught.message}</p>;
   }
 
@@ -288,18 +376,23 @@ function Result({
   }
 
   if (cmd.kind === "teach") {
+    if (pending) {
+      return (
+        <div className="flex flex-col items-center gap-2 text-sm text-muted">
+          <Spinner className="h-5 w-5 text-accent" />
+          <span>
+            Fact-checking and folding it into the brain<AnimatedDots />
+          </span>
+          <span className="text-xs text-muted/60">this can take a few seconds</span>
+        </div>
+      );
+    }
     return (
       <p className="text-center text-sm text-muted">
-        {pending ? (
-          "Teaching…"
-        ) : (
-          <>
-            Press <kbd className="rounded border border-border px-1.5 py-0.5 text-xs">Enter</kbd>{" "}
-            to teach: the <span className="text-foreground">{cmd.relation}</span> of{" "}
-            <span className="text-foreground">{cmd.subject}</span> is{" "}
-            <span className="text-foreground">{cmd.object}</span>
-          </>
-        )}
+        Press <kbd className="rounded border border-border px-1.5 py-0.5 text-xs">Enter</kbd>{" "}
+        to teach: the <span className="text-foreground">{cmd.relation}</span> of{" "}
+        <span className="text-foreground">{cmd.subject}</span> is{" "}
+        <span className="text-foreground">{cmd.object}</span>
       </p>
     );
   }
@@ -444,6 +537,79 @@ function suggestCorrection(
   const conf = recallConfidence(brain.ask(subj, rel.toLowerCase(), 2));
   if (!conf.confident) return null;
   return `${rel} of ${subj}`;
+}
+
+/**
+ * Translate a confident query into a trace the graph can animate. Mirrors the
+ * branches in <Result> (including the typo-repair fallback) but returns the
+ * canonical concept names and the hops the "thought" travels along. Returns
+ * null when there is nothing worth showing yet.
+ */
+function buildTrace(
+  brain: KnowledgeBrain,
+  resolvers: BrainResolvers | null,
+  cmd: Command,
+): TracePayload | null {
+  if (cmd.kind === "ask") {
+    let subject = cmd.subject;
+    let relation = cmd.relation.toLowerCase();
+    let matches = brain.ask(subject, relation, 4);
+    let conf = recallConfidence(matches);
+    if (!conf.confident && resolvers) {
+      const s2 = resolvers.concept.resolve(cmd.subject)?.name ?? subject;
+      const r2 = (resolvers.relation.resolve(cmd.relation)?.name ?? relation).toLowerCase();
+      const m2 = brain.ask(s2, r2, 4);
+      const c2 = recallConfidence(m2);
+      if (c2.confident) {
+        subject = s2;
+        relation = r2;
+        matches = m2;
+        conf = c2;
+      }
+    }
+    if (!conf.confident) return null;
+    const answer = matches[0].name;
+    return {
+      kind: "ask",
+      focus: [subject],
+      answer,
+      relation,
+      segments: [[subject, answer]],
+    };
+  }
+
+  if (cmd.kind === "analogy") {
+    const matches = brain.analogy(cmd.value, cmd.from, cmd.to, 4);
+    const conf = recallConfidence(matches);
+    if (!conf.confident) return null;
+    const answer = matches[0].name;
+    const recovered = brain.recoverRelation(cmd.value, cmd.from, 1)[0];
+    return {
+      kind: "analogy",
+      focus: [cmd.from, cmd.to, cmd.value],
+      answer,
+      relation: recovered?.name ?? null,
+      segments: [
+        [cmd.from, cmd.to],
+        [cmd.value, answer],
+      ],
+    };
+  }
+
+  if (cmd.kind === "neighbors") {
+    const entity = resolvers?.concept.resolve(cmd.entity)?.name ?? cmd.entity;
+    const neighbors = brain.similarConcepts(entity, 4).filter((m) => m.score > 0.05);
+    if (neighbors.length === 0) return null;
+    return {
+      kind: "neighbors",
+      focus: [entity],
+      answer: null,
+      relation: null,
+      segments: neighbors.slice(0, 3).map((m) => [entity, m.name] as [string, string]),
+    };
+  }
+
+  return null;
 }
 
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {
