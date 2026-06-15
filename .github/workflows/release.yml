@@ -11,7 +11,6 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write
-      pull-requests: write
     steps:
       - uses: actions/checkout@v4
       - uses: actions/setup-node@v4
@@ -22,13 +21,29 @@ jobs:
       # See CI workflow: `npm ci` fails because the Windows-generated lockfile
       # omits Linux-only optional native deps (lightningcss/@emnapi).
       - run: npm install --no-audit --no-fund
-      - name: Build @hiperbrain/core
-        run: npm run build:core
-      - name: Create release PR or publish to npm
-        uses: changesets/action@v1
-        with:
-          version: npm run version-packages
-          publish: npm run release
+
+      # Consume any pending changesets: bump versions + update changelogs.
+      # No-op when there are no changesets, so it is safe to run on every push.
+      - name: Apply changesets (version bump)
+        run: npm run version-packages
+
+      # Build and publish to npm. `changeset publish` only publishes versions
+      # that are not already on the registry, so this is idempotent.
+      - name: Publish to npm
+        run: npm run release
+        env:
+          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
+
+      # Commit the version bump + changelog back to master and push the git
+      # tags created by `changeset publish`. Pushing with GITHUB_TOKEN does NOT
+      # retrigger this workflow, so there is no release loop. `[skip ci]` keeps
+      # the bookkeeping commit out of the CI workflow too.
+      - name: Commit version bump and push tags
+        run: |
+          git config user.name "github-actions[bot]"
+          git config user.email "github-actions[bot]@users.noreply.github.com"
+          git add -A
+          git commit -m "ci: version packages [skip ci]" || echo "Nothing to commit."
+          git push --follow-tags
         env:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-          NODE_AUTH_TOKEN: ${{ secrets.NPM_TOKEN }}
