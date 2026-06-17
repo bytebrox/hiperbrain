@@ -13,6 +13,7 @@
 import { createHash, randomBytes } from "node:crypto";
 import { getServiceClient } from "./supabase";
 import { verifyBurn } from "./solana";
+import { decryptKey, encryptKey } from "./key-crypto";
 
 const CREDITS_PER_TOKEN = Number(process.env.CREDITS_PER_TOKEN ?? "1");
 export const COST_ASK = Number(process.env.CREDITS_COST_ASK ?? "1");
@@ -72,15 +73,61 @@ export async function redeemBurn(signature: string): Promise<RedeemResult> {
   return { ok: true, credited: granted, tokens: burn.tokens, wallet: burn.wallet };
 }
 
-/** Mint a fresh API key for a wallet. Returns the plaintext key once. */
+/** Mint a fresh API key for a wallet. Returns the plaintext key. */
 export async function issueApiKey(wallet: string, label?: string): Promise<string | null> {
   const client = getServiceClient();
   if (!client) return null;
   const key = `hb_live_${randomBytes(24).toString("hex")}`;
-  const { error } = await client
-    .from("api_keys")
-    .insert({ key_hash: hashKey(key), wallet, label: label ?? null });
+  const { error } = await client.from("api_keys").insert({
+    key_hash: hashKey(key),
+    wallet,
+    label: label ?? null,
+    key_enc: encryptKey(key),
+  });
   return error ? null : key;
+}
+
+/** A key as shown in the dashboard. `key` is null for legacy un-encrypted keys. */
+export interface ApiKeyRecord {
+  /** Stable identifier for revoke calls (the key's SHA-256 hash). */
+  id: string;
+  /** The full plaintext key, or null if it cannot be recovered (legacy/lost secret). */
+  key: string | null;
+  label: string | null;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+}
+
+/** Every API key for a wallet, with the plaintext recovered where possible. */
+export async function listApiKeys(wallet: string): Promise<ApiKeyRecord[]> {
+  const client = getServiceClient();
+  if (!client) return [];
+  const { data, error } = await client
+    .from("api_keys")
+    .select("key_hash, label, key_enc, created_at, last_used_at")
+    .eq("wallet", wallet)
+    .order("created_at", { ascending: false });
+  if (error || !data) return [];
+  return data.map((row) => ({
+    id: row.key_hash as string,
+    key: decryptKey(row.key_enc as string | null),
+    label: (row.label as string | null) ?? null,
+    createdAt: (row.created_at as string | null) ?? null,
+    lastUsedAt: (row.last_used_at as string | null) ?? null,
+  }));
+}
+
+/** Permanently revoke a key, scoped to its owning wallet. Returns true if one was removed. */
+export async function revokeApiKey(wallet: string, id: string): Promise<boolean> {
+  const client = getServiceClient();
+  if (!client) return false;
+  const { data, error } = await client
+    .from("api_keys")
+    .delete()
+    .eq("wallet", wallet)
+    .eq("key_hash", id)
+    .select("key_hash");
+  return !error && Array.isArray(data) && data.length > 0;
 }
 
 /** The wallet a key belongs to, or null if the key is unknown. */

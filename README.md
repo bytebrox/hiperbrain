@@ -229,9 +229,12 @@ curl -X POST https://www.hiperbrain.com/api/v1/ask \
 
 Connect a wallet, burn for credits and mint an API key on the
 [Token & API](https://www.hiperbrain.com/token) page. All RPC stays server-side
-(via Helius), API keys are stored only as hashes, and every redemption is
-replay-protected by the burn signature. The economy is configured through env
-vars (`TOKEN_MINT`, `CREDITS_PER_TOKEN`, `CREDITS_COST_ASK`, `CREDITS_COST_TEACH`);
+(via Helius), every redemption is replay-protected by the burn signature, and
+keys are looked up by SHA-256 hash. Keys are also stored encrypted at rest
+(AES-256-GCM) so their owner can re-view, revoke and re-create them from the
+dashboard after signing in with their wallet. The economy is configured through
+env vars (`TOKEN_MINT`, `CREDITS_PER_TOKEN`, `CREDITS_COST_ASK`,
+`CREDITS_COST_TEACH`, and `API_KEY_ENC_SECRET` for at-rest key encryption);
 run [`supabase/credits.sql`](supabase/credits.sql) once to create the ledger.
 
 ---

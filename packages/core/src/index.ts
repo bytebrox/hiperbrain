@@ -6,3 +6,4 @@ export * from "./encoders";
 export * from "./brain";
 export * from "./knowledge";
 export * from "./resolver";
+export * from "./client";

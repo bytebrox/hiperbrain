@@ -39,6 +39,9 @@ yarn-error.log*
 # one-off DB seeding / maintenance scripts (not needed by the app at runtime)
 /scripts/
 
+# marketing material (not part of the app)
+/marketing/
+
 # typescript
 *.tsbuildinfo
 next-env.d.ts

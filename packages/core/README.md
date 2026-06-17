@@ -101,13 +101,52 @@ cosineSimilarity(bind(bound, b), a);      // ≈ 1  — recover `a`
 - **Deterministic & explainable** — same input → same vector, every time.
 - **Tiny & portable** — no dependencies, no GPU, runs at the edge.
 
-## Hosted API
+## Hosted API — reason over the live collective brain
 
-This package runs fully offline and knows only what you teach it. If you want to
+Everything above runs **fully offline** and knows only what you teach it. To
 reason over the **live collective brain** — every fact the community has taught
-on [hiperbrain.com](https://www.hiperbrain.com) — there is also a hosted,
-credit-metered HTTP API (`/api/v1/ask`, `/api/v1/teach`). See
-[hiperbrain.com/token](https://www.hiperbrain.com/token) for keys and docs.
+on [hiperbrain.com](https://www.hiperbrain.com) — use the built-in
+`HiperbrainClient`. It wraps the hosted, **credit-metered** HTTP API, so every
+call requires an API key and spends credits server-side. A read (`ask`) costs 1
+credit; a permanent, AI-verified write (`teach`) costs 10 and is refunded
+automatically if the fact does not land.
+
+Mint a key by burning tokens for credits at
+[hiperbrain.com/token](https://www.hiperbrain.com/token).
+
+```ts
+import { HiperbrainClient } from "@hiperbrain/core";
+
+const hb = new HiperbrainClient({ apiKey: "hb_live_..." }); // key is required
+
+// Ask — 1 credit
+const { answer, confidence, remaining } = await hb.ask("France", "capital");
+//    → "Paris", { confident: true, ... }, 999
+
+// Teach — 10 credits (refunded if it's a duplicate / rejected / lost a conflict)
+await hb.teach({ subject: "Slovenia", relation: "capital", object: "Ljubljana" });
+
+// Check the balance — free, spends nothing
+await hb.balance(); // → 989
+```
+
+Out of credits or a bad key throws a typed `HiperbrainApiError`:
+
+```ts
+import { HiperbrainApiError } from "@hiperbrain/core";
+
+try {
+  await hb.ask("France", "capital");
+} catch (e) {
+  if (e instanceof HiperbrainApiError && e.outOfCredits) {
+    // 402 — burn more tokens at /token to top up
+  }
+}
+```
+
+Self-hosting? Point the client at your own deployment with
+`new HiperbrainClient({ apiKey, baseUrl: "https://your-host" })`. On runtimes
+without a global `fetch` (Node < 18) pass one via the `fetch` option.
 
 ## License
 

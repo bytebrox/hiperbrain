@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { useCallback, useRef, useState } from "react";
 import { Transaction } from "@solana/web3.js";
 import bs58 from "bs58";
 
@@ -19,7 +19,24 @@ declare global {
   }
 }
 
-const KEY_STORAGE = "hb_api_key";
+/** A key as returned by GET-style /api/credits/keys. */
+interface ApiKeyRecord {
+  id: string;
+  key: string | null;
+  label: string | null;
+  createdAt: string | null;
+  lastUsedAt: string | null;
+}
+
+/** A reusable "manage keys" signature; valid server-side for 5 minutes. */
+interface ManageAuth {
+  wallet: string;
+  timestamp: number;
+  signature: string;
+}
+
+// Re-sign a little before the server's 5-minute freshness window expires.
+const AUTH_TTL_MS = 4 * 60 * 1000;
 
 function base64ToBytes(b64: string): Uint8Array {
   const bin = atob(b64);
@@ -28,8 +45,12 @@ function base64ToBytes(b64: string): Uint8Array {
   return out;
 }
 
-function signMessageText(ts: number): string {
+function issueMessageText(ts: number): string {
   return `hiperbrain: issue an API key for this wallet.\nts=${ts}`;
+}
+
+function manageMessageText(ts: number): string {
+  return `hiperbrain: manage API keys for this wallet.\nts=${ts}`;
 }
 
 type Note = { tone: "info" | "ok" | "err"; text: string } | null;
@@ -37,15 +58,16 @@ type Note = { tone: "info" | "ok" | "err"; text: string } | null;
 export function TokenConsole({ tokenConfigured }: { tokenConfigured: boolean }) {
   const [wallet, setWallet] = useState<string | null>(null);
   const [amount, setAmount] = useState("1000");
-  const [apiKey, setApiKey] = useState<string | null>(null);
+  const [keys, setKeys] = useState<ApiKeyRecord[] | null>(null);
+  const [revealed, setRevealed] = useState<Set<string>>(new Set());
   const [balance, setBalance] = useState<number | null>(null);
   const [busy, setBusy] = useState<string | null>(null);
   const [note, setNote] = useState<Note>(null);
   const [sig, setSig] = useState("");
 
-  useEffect(() => {
-    setApiKey(localStorage.getItem(KEY_STORAGE));
-  }, []);
+  // The manage-keys signature is kept in a ref so list/revoke/create can reuse
+  // it within the freshness window — the user signs once to manage their keys.
+  const authRef = useRef<ManageAuth | null>(null);
 
   const provider = (): SolanaProvider | null =>
     typeof window !== "undefined" && window.solana ? window.solana : null;
@@ -62,9 +84,40 @@ export function TokenConsole({ tokenConfigured }: { tokenConfigured: boolean }) 
     }
   }, []);
 
-  useEffect(() => {
-    if (apiKey) void refreshBalance(apiKey);
-  }, [apiKey, refreshBalance]);
+  // Obtain a fresh "manage" signature, reusing the cached one when still valid.
+  const ensureAuth = useCallback(async (): Promise<ManageAuth | null> => {
+    const p = provider();
+    if (!p || !wallet) return null;
+    const cached = authRef.current;
+    if (cached && cached.wallet === wallet && Date.now() - cached.timestamp < AUTH_TTL_MS) {
+      return cached;
+    }
+    const ts = Date.now();
+    const message = new TextEncoder().encode(manageMessageText(ts));
+    const { signature } = await p.signMessage(message, "utf8");
+    const auth: ManageAuth = { wallet, timestamp: ts, signature: bs58.encode(signature) };
+    authRef.current = auth;
+    return auth;
+  }, [wallet]);
+
+  // Fetch the wallet's keys and refresh the balance from the first usable key.
+  const loadKeys = useCallback(
+    async (auth: ManageAuth) => {
+      const res = await fetch("/api/credits/keys", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(auth),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not load keys.");
+      const list = (data.keys as ApiKeyRecord[]) ?? [];
+      setKeys(list);
+      const usable = list.find((k) => k.key);
+      if (usable?.key) void refreshBalance(usable.key);
+      return list;
+    },
+    [refreshBalance],
+  );
 
   const connect = async () => {
     const p = provider();
@@ -78,6 +131,22 @@ export function TokenConsole({ tokenConfigured }: { tokenConfigured: boolean }) 
       setNote(null);
     } catch {
       setNote({ tone: "err", text: "Wallet connection was rejected." });
+    }
+  };
+
+  // Sign once to "log in" to the key dashboard, then list the wallet's keys.
+  const signInToManage = async () => {
+    if (!wallet) return;
+    setBusy("manage");
+    try {
+      const auth = await ensureAuth();
+      if (!auth) throw new Error("Connect a wallet first.");
+      await loadKeys(auth);
+      setNote(null);
+    } catch (e) {
+      setNote({ tone: "err", text: e instanceof Error ? e.message : "Could not load keys." });
+    } finally {
+      setBusy(null);
     }
   };
 
@@ -97,7 +166,8 @@ export function TokenConsole({ tokenConfigured }: { tokenConfigured: boolean }) 
       if (!redeem.ok) throw new Error(data.error ?? "Redemption failed.");
       setNote({ tone: "ok", text: `Done. ${data.credited} credits added.` });
       setSig("");
-      if (apiKey) void refreshBalance(apiKey);
+      const usable = keys?.find((k) => k.key);
+      if (usable?.key) void refreshBalance(usable.key);
     } catch (e) {
       setNote({ tone: "err", text: e instanceof Error ? e.message : "Redemption failed." });
     } finally {
@@ -138,13 +208,15 @@ export function TokenConsole({ tokenConfigured }: { tokenConfigured: boolean }) 
     }
   };
 
+  // Mint a new key. The key is now stored (encrypted) server-side, so it shows
+  // up in the list below and stays re-viewable — no more "shown only once".
   const createKey = async () => {
     const p = provider();
     if (!p || !wallet) return;
     setBusy("key");
     try {
       const ts = Date.now();
-      const message = new TextEncoder().encode(signMessageText(ts));
+      const message = new TextEncoder().encode(issueMessageText(ts));
       const { signature } = await p.signMessage(message, "utf8");
       const res = await fetch("/api/credits/key", {
         method: "POST",
@@ -153,14 +225,50 @@ export function TokenConsole({ tokenConfigured }: { tokenConfigured: boolean }) 
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.error ?? "Could not issue a key.");
-      localStorage.setItem(KEY_STORAGE, data.apiKey);
-      setApiKey(data.apiKey);
-      setNote({ tone: "ok", text: "API key created. Copy it now — it is shown only once." });
+
+      const auth = await ensureAuth();
+      let list: ApiKeyRecord[] = [];
+      if (auth) list = await loadKeys(auth);
+      // Reveal the freshly created key so the user can copy it immediately.
+      const created = list.find((k) => k.key === data.apiKey);
+      if (created) setRevealed((prev) => new Set(prev).add(created.id));
+      setNote({ tone: "ok", text: "API key created and saved to your wallet." });
     } catch (e) {
       setNote({ tone: "err", text: e instanceof Error ? e.message : "Could not issue a key." });
     } finally {
       setBusy(null);
     }
+  };
+
+  const deleteKey = async (id: string) => {
+    if (!wallet) return;
+    setBusy(`del:${id}`);
+    try {
+      const auth = await ensureAuth();
+      if (!auth) throw new Error("Connect a wallet first.");
+      const res = await fetch("/api/credits/keys", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ ...auth, id }),
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.error ?? "Could not delete the key.");
+      await loadKeys(auth);
+      setNote({ tone: "ok", text: "Key revoked. It can no longer be used." });
+    } catch (e) {
+      setNote({ tone: "err", text: e instanceof Error ? e.message : "Could not delete the key." });
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const toggleReveal = (id: string) => {
+    setRevealed((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
   };
 
   return (
@@ -253,38 +361,49 @@ export function TokenConsole({ tokenConfigured }: { tokenConfigured: boolean }) 
         </div>
       </Step>
 
-      <Step n={3} title="Create your API key">
+      <Step n={3} title="Your API keys">
         <p className="mb-3 text-sm leading-relaxed text-muted">
-          Sign a message to prove you own the wallet. The key spends the credits
-          that wallet earned. Store it securely — it is shown only once.
+          Keys are saved to your wallet and spend its credits. Sign once to view
+          them — reveal a key with the eye, copy it, revoke it, or create more.
         </p>
-        {apiKey ? (
-          <div className="space-y-2">
-            <code className="block break-all rounded-sm border border-border bg-surface px-3 py-2 font-mono text-xs text-foreground">
-              {apiKey}
-            </code>
-            <div className="flex gap-2">
-              <Button onClick={() => navigator.clipboard.writeText(apiKey)}>Copy key</Button>
-              <Button
-                variant="ghost"
-                onClick={() => {
-                  localStorage.removeItem(KEY_STORAGE);
-                  setApiKey(null);
-                  setBalance(null);
-                }}
-              >
-                Forget
-              </Button>
-            </div>
-          </div>
-        ) : (
+
+        {keys === null ? (
           <Button
-            onClick={createKey}
-            disabled={!wallet || busy === "key"}
+            onClick={signInToManage}
+            disabled={!wallet || busy === "manage"}
             className="w-full sm:w-auto"
           >
-            {busy === "key" ? "Signing…" : "Sign & create key"}
+            {busy === "manage" ? "Signing…" : "Sign in to view keys"}
           </Button>
+        ) : (
+          <div className="space-y-3">
+            {keys.length === 0 ? (
+              <p className="text-sm text-muted">
+                No keys yet. Create your first one below.
+              </p>
+            ) : (
+              <ul className="space-y-2">
+                {keys.map((k) => (
+                  <KeyRow
+                    key={k.id}
+                    record={k}
+                    revealed={revealed.has(k.id)}
+                    deleting={busy === `del:${k.id}`}
+                    onToggle={() => toggleReveal(k.id)}
+                    onCopy={() => k.key && navigator.clipboard.writeText(k.key)}
+                    onDelete={() => deleteKey(k.id)}
+                  />
+                ))}
+              </ul>
+            )}
+            <Button
+              onClick={createKey}
+              disabled={!wallet || busy === "key"}
+              className="w-full sm:w-auto"
+            >
+              {busy === "key" ? "Signing…" : "Create new key"}
+            </Button>
+          </div>
         )}
       </Step>
 
@@ -322,6 +441,63 @@ curl https://www.hiperbrain.com/api/credits/balance \\
       </Step>
     </div>
   );
+}
+
+function KeyRow({
+  record,
+  revealed,
+  deleting,
+  onToggle,
+  onCopy,
+  onDelete,
+}: {
+  record: ApiKeyRecord;
+  revealed: boolean;
+  deleting: boolean;
+  onToggle: () => void;
+  onCopy: () => void;
+  onDelete: () => void;
+}) {
+  const recoverable = Boolean(record.key);
+  const display = !recoverable
+    ? "•••• (created before keys were re-viewable — revoke and create a new one)"
+    : revealed
+      ? record.key!
+      : `${record.key!.slice(0, 8)}${"•".repeat(24)}`;
+
+  return (
+    <li className="rounded-sm border border-border bg-surface px-3 py-2">
+      <div className="flex items-center gap-2">
+        <code className="min-w-0 flex-1 truncate font-mono text-xs text-foreground">
+          {display}
+        </code>
+        {recoverable && (
+          <>
+            <IconButton title={revealed ? "Hide key" : "Reveal key"} onClick={onToggle}>
+              {revealed ? <EyeOffIcon /> : <EyeIcon />}
+            </IconButton>
+            <IconButton title="Copy key" onClick={onCopy}>
+              <CopyIcon />
+            </IconButton>
+          </>
+        )}
+        <IconButton title="Revoke key" onClick={onDelete} disabled={deleting} danger>
+          {deleting ? <span className="px-1 text-[10px]">…</span> : <TrashIcon />}
+        </IconButton>
+      </div>
+      <div className="mt-1 flex flex-wrap gap-x-3 text-[10px] text-muted/70">
+        {record.createdAt && <span>created {formatDate(record.createdAt)}</span>}
+        <span>
+          {record.lastUsedAt ? `last used ${formatDate(record.lastUsedAt)}` : "never used"}
+        </span>
+      </div>
+    </li>
+  );
+}
+
+function formatDate(iso: string): string {
+  const d = new Date(iso);
+  return Number.isNaN(d.getTime()) ? iso : d.toLocaleDateString();
 }
 
 function Step({ n, title, children }: { n: number; title: string; children: React.ReactNode }) {
@@ -364,5 +540,70 @@ function Button({
     >
       {children}
     </button>
+  );
+}
+
+function IconButton({
+  children,
+  onClick,
+  title,
+  disabled,
+  danger,
+}: {
+  children: React.ReactNode;
+  onClick: () => void;
+  title: string;
+  disabled?: boolean;
+  danger?: boolean;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      title={title}
+      aria-label={title}
+      disabled={disabled}
+      className={`flex h-7 w-7 shrink-0 items-center justify-center rounded-sm border border-border transition-colors disabled:cursor-not-allowed disabled:opacity-40 ${
+        danger ? "text-muted hover:border-negative/50 hover:text-negative" : "text-muted hover:text-foreground"
+      }`}
+    >
+      {children}
+    </button>
+  );
+}
+
+function EyeIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M1 12s4-8 11-8 11 8 11 8-4 8-11 8-11-8-11-8z" />
+      <circle cx="12" cy="12" r="3" />
+    </svg>
+  );
+}
+
+function EyeOffIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <path d="M17.94 17.94A10.07 10.07 0 0 1 12 20c-7 0-11-8-11-8a18.45 18.45 0 0 1 5.06-5.94M9.9 4.24A9.12 9.12 0 0 1 12 4c7 0 11 8 11 8a18.5 18.5 0 0 1-2.16 3.19m-6.72-1.07a3 3 0 1 1-4.24-4.24" />
+      <line x1="1" y1="1" x2="23" y2="23" />
+    </svg>
+  );
+}
+
+function CopyIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <rect x="9" y="9" width="13" height="13" rx="2" ry="2" />
+      <path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1" />
+    </svg>
+  );
+}
+
+function TrashIcon() {
+  return (
+    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+      <polyline points="3 6 5 6 21 6" />
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2" />
+    </svg>
   );
 }

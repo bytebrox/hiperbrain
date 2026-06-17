@@ -28,14 +28,26 @@ create table if not exists public.credit_events (
   created_at  timestamptz not null default now()
 );
 
--- API keys. We only ever store the SHA-256 hash of a key, never the key itself.
+-- API keys.
+--   key_hash : SHA-256 of the key — used for the (constant-time, indexed) auth
+--              lookup on every metered request. Never reversible.
+--   key_enc  : the key encrypted at rest with the server-side
+--              API_KEY_ENC_SECRET (AES-256-GCM, format "v1:iv:tag:ciphertext").
+--              This is what lets a wallet owner re-view their keys in the
+--              dashboard after signing in. A DB leak alone does NOT expose the
+--              keys — the encryption secret lives only in the server env.
 create table if not exists public.api_keys (
   key_hash      text primary key,
   wallet        text not null,
   label         text,
+  key_enc       text,
   created_at    timestamptz not null default now(),
   last_used_at  timestamptz
 );
+
+-- Migration for an existing install that predates re-viewable keys:
+--   alter table public.api_keys add column if not exists key_enc text;
+-- (Keys minted before this column existed cannot be re-displayed — only revoked.)
 
 create index if not exists api_keys_wallet_idx on public.api_keys (wallet);
 create index if not exists credit_events_wallet_idx on public.credit_events (wallet);

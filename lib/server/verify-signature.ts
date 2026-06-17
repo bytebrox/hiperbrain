@@ -12,9 +12,18 @@ import bs58 from "bs58";
 /** Max age of the signed message, to limit replay of a captured signature. */
 const MAX_MESSAGE_AGE_MS = 5 * 60 * 1000;
 
-/** The exact message the wallet must sign (must match the client). */
+/** The exact message the wallet must sign to mint a key (must match the client). */
 export function signInMessage(timestamp: number): string {
   return `hiperbrain: issue an API key for this wallet.\nts=${timestamp}`;
+}
+
+/**
+ * The message a wallet signs to view or revoke its keys. A single signature is
+ * reusable for listing, revoking and re-creating within the freshness window,
+ * so the user signs once to "log in" to the key dashboard.
+ */
+export function manageKeysMessage(timestamp: number): string {
+  return `hiperbrain: manage API keys for this wallet.\nts=${timestamp}`;
 }
 
 export function verifyWalletSignature(

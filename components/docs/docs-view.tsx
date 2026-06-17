@@ -829,6 +829,14 @@ recallConfidence(brain.ask("France", "capital")); // -> { confident, sigma }`}
         same input always yields the same vector, so results are reproducible and
         testable.
       </p>
+      <p className="mt-3">
+        This half runs <em>fully offline</em> — it knows only what you teach it
+        locally and never calls a server. To reason over the{" "}
+        <em>live collective brain</em> instead, the same package also exports{" "}
+        <Mono>HiperbrainClient</Mono>, a typed client for the credit-metered
+        hosted API (see <em>Token &amp; API</em> below). Local computation stays
+        free; only the hosted client spends credits.
+      </p>
       <p className="mt-4 flex flex-wrap gap-3">
         <a
           href="https://www.npmjs.com/package/@hiperbrain/core"
@@ -908,6 +916,21 @@ recallConfidence(brain.ask("France", "capital")); // -> { confident, sigma }`}
 # -> { "answer": "Paris", "confidence": { "confident": true, ... }, "remaining": 999 }`}
       </pre>
       <p className="mt-3">
+        Prefer JavaScript or TypeScript? The same{" "}
+        <Mono>@hiperbrain/core</Mono> package ships a typed client for the hosted
+        API — <Mono>HiperbrainClient</Mono>. The API key is required, and every
+        call spends credits server-side:
+      </p>
+      <pre className="mt-3 overflow-x-auto rounded-lg border border-border bg-surface-2/50 p-4 font-mono text-xs text-foreground">
+{`import { HiperbrainClient } from "@hiperbrain/core";
+
+const hb = new HiperbrainClient({ apiKey: "hb_live_..." });
+
+await hb.ask("France", "capital");  // -> { answer: "Paris", remaining: 999 } — 1 credit
+await hb.teach({ subject: "Slovenia", relation: "capital", object: "Ljubljana" }); // 10 credits
+await hb.balance();                 // -> 989 — free`}
+      </pre>
+      <p className="mt-3">
         Connect a wallet, burn for credits and mint an API key on the{" "}
         <a href="/token" className="text-accent hover:underline">
           Token &amp; API
@@ -927,7 +950,12 @@ recallConfidence(brain.ask("France", "capital")); // -> { confident, sigma }`}
         <a href="/token" className="text-accent hover:underline">
           Token &amp; API
         </a>{" "}
-        page. All request and response bodies are JSON.
+        page. All request and response bodies are JSON. In JavaScript or
+        TypeScript you can skip the raw HTTP and use{" "}
+        <Mono>HiperbrainClient</Mono> from <Mono>@hiperbrain/core</Mono>, which
+        wraps every metered endpoint and throws a typed{" "}
+        <Mono>HiperbrainApiError</Mono> (with <Mono>.outOfCredits</Mono>) on
+        failure.
       </p>
 
       <p className="mt-4">
