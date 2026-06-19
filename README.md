@@ -1,13 +1,9 @@
-<h1 align="center">hiperbrain</h1>
-
 <p align="center">
   <img src="public/banner.png" alt="hiperbrain banner" width="100%" />
 </p>
 <p align="center">
-  <b>A collective brain that thinks in 10,000 dimensions.</b>
+  <a href="https://www.hiperbrain.com"><strong>www.hiperbrain.com</strong></a>
 </p>
-
-[**www.hiperbrain.com**](https://www.hiperbrain.com)
 
 hiperbrain is **not** another ChatGPT wrapper. It is a small, real, brain-inspired
 computing engine built on **Hyperdimensional Computing (HDC / Vector Symbolic
