@@ -1,6 +1,11 @@
-# hiperbrain
+<h1 align="center">hiperbrain</h1>
 
-### A collective brain that thinks in 10,000 dimensions.
+<p align="center">
+  <img src="public/banner.png" alt="hiperbrain banner" width="100%" />
+</p>
+<p align="center">
+  <b>A collective brain that thinks in 10,000 dimensions.</b>
+</p>
 
 [**www.hiperbrain.com**](https://www.hiperbrain.com)
 
@@ -233,7 +238,7 @@ Connect a wallet, burn for credits and mint an API key on the
 keys are looked up by SHA-256 hash. Keys are also stored encrypted at rest
 (AES-256-GCM) so their owner can re-view, revoke and re-create them from the
 dashboard after signing in with their wallet. The economy is configured through
-env vars (`TOKEN_MINT`, `CREDITS_PER_TOKEN`, `CREDITS_COST_ASK`,
+env vars (`NEXT_PUBLIC_TOKEN_MINT`, `CREDITS_PER_TOKEN`, `CREDITS_COST_ASK`,
 `CREDITS_COST_TEACH`, and `API_KEY_ENC_SECRET` for at-rest key encryption);
 run [`supabase/credits.sql`](supabase/credits.sql) once to create the ledger.
 

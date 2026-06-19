@@ -12,7 +12,7 @@ export function SiteFooter() {
           <span className="hidden sm:inline">· thinks in 10,000 dimensions</span>
         </div>
 
-        <ContractAddress address={process.env.NEXT_PUBLIC_CONTRACT_ADDRESS} />
+        <ContractAddress address={process.env.NEXT_PUBLIC_TOKEN_MINT} />
 
         <div className="flex items-center gap-3 text-xs text-muted/80">
           <Link href="/admin" className="transition-colors hover:text-foreground">

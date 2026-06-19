@@ -7,9 +7,10 @@
  *  - `verifyBurn` confirms that a given signature is a finalized transaction
  *    that burned our token mint, and reports who burned how much.
  *
- * The token mint is read from TOKEN_MINT. Until the token is launched the env
- * holds a placeholder, so `isTokenConfigured()` reports false and every entry
- * point fails closed.
+ * The token mint is read from NEXT_PUBLIC_TOKEN_MINT (a mint address is public
+ * on-chain, so the same value is safely used on the client and the server).
+ * Until the token is launched the env holds a placeholder, so
+ * `isTokenConfigured()` reports false and every entry point fails closed.
  */
 
 import {
@@ -24,7 +25,7 @@ import {
   getMint,
 } from "@solana/spl-token";
 
-const MINT = process.env.TOKEN_MINT ?? "";
+const MINT = process.env.NEXT_PUBLIC_TOKEN_MINT ?? "";
 const BASE58 = /^[1-9A-HJ-NP-Za-km-z]{32,44}$/;
 
 export function getRpcUrl(): string | null {
