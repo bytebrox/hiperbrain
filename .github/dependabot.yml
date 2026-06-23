@@ -7,9 +7,27 @@ updates:
       interval: "weekly"
     open-pull-requests-limit: 10
     groups:
+      # React and its types must move together, otherwise react-dom's peer
+      # range (react@^x.y.z) conflicts with a lagging react and the install
+      # fails. Grouping bumps them in one PR.
+      react:
+        patterns:
+          - "react"
+          - "react-dom"
+          - "@types/react"
+          - "@types/react-dom"
       # Batch low-risk dev/tooling bumps into a single PR to cut noise.
       dev-dependencies:
         dependency-type: "development"
+    ignore:
+      # Stay on TypeScript 5 for now: TS 6 breaks the @hiperbrain/core .d.ts
+      # build (baseUrl deprecation in the toolchain). Revisit deliberately.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
+      # eslint-config-next pins eslint to ^9 peers; a major bump (eslint 10)
+      # only produces peer-dependency conflicts. Stay aligned with Next.
+      - dependency-name: "eslint"
+        update-types: ["version-update:semver-major"]
     labels:
       - "dependencies"
 
@@ -19,6 +37,10 @@ updates:
     schedule:
       interval: "weekly"
     open-pull-requests-limit: 5
+    ignore:
+      # Same as above: TS 6 currently breaks the declaration build via tsup.
+      - dependency-name: "typescript"
+        update-types: ["version-update:semver-major"]
     labels:
       - "dependencies"
       - "core"
