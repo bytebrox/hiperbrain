@@ -51,6 +51,14 @@ export const metadata: Metadata = {
     siteName: "hiperbrain",
     locale: "en_US",
     type: "website",
+    images: [
+      {
+        url: "/banner.png",
+        width: 1500,
+        height: 500,
+        alt: "hiperbrain - a shared brain that thinks in 10,000 dimensions",
+      },
+    ],
   },
   twitter: {
     card: "summary_large_image",
@@ -59,6 +67,7 @@ export const metadata: Metadata = {
     creator: "@hiperbrainx",
     description:
       "A collective brain built on Hyperdimensional Computing. Teach it facts, ask it questions - the thinking happens live in your browser.",
+    images: ["/banner.png"],
   },
   robots: {
     index: true,
