@@ -938,6 +938,14 @@ await hb.balance();                 // -> 989 — free`}
         page. The flow is wired end-to-end and goes live the moment the token
         mint is set.
       </p>
+      <p className="mt-4">
+        Your keys belong to your wallet, not your browser. They are stored
+        encrypted at rest, so you can sign in on the dashboard at any time to{" "}
+        <em>re-view</em> a key (reveal it with the eye icon), copy it, revoke it,
+        or create more — each one spends the same wallet&apos;s credits. Credits
+        themselves are tied to the wallet and never expire, so losing a key is
+        harmless: just sign in again and mint a new one.
+      </p>
     </>
   ),
   apiref: (
@@ -1018,6 +1026,29 @@ await hb.balance();                 // -> 989 — free`}
       </p>
 
       <p className="mt-4">
+        <Term>POST /api/credits/keys</Term> — list every key on your wallet, and{" "}
+        <Term>DELETE /api/credits/keys</Term> — revoke one. Both are driven by the
+        dashboard and require a fresh signature of the &ldquo;manage API
+        keys&rdquo; message (the same signature works for both within a short
+        window), so only the wallet owner can view or revoke keys. Keys are
+        stored encrypted at rest, so listing returns the full key for re-display;
+        revoking is immediate and permanent.
+      </p>
+      <pre className="mt-2 overflow-x-auto rounded-lg border border-border bg-surface-2/50 p-4 font-mono text-xs text-foreground">
+{`// POST body (list) — DELETE adds the key "id" to revoke
+{ "wallet": "<address>", "timestamp": 1718000000000, "signature": "<base58>" }
+
+// 200 OK (list)
+{ "keys": [
+  { "id": "<hash>", "key": "hb_live_…", "label": null,
+    "createdAt": "2026-06-17T…", "lastUsedAt": null }
+] }
+
+// 200 OK (delete)
+{ "ok": true }`}
+      </pre>
+
+      <p className="mt-4">
         <Term>Status codes</Term>
       </p>
       <ul className="mt-2 space-y-2">
@@ -1034,6 +1065,10 @@ await hb.balance();                 // -> 989 — free`}
         <li>
           <Mono>402</Mono> — out of credits. Burn more tokens to top up; nothing
           is charged on a 402.
+        </li>
+        <li>
+          <Mono>404</Mono> — key not found when revoking (it is not on this
+          wallet, or was already removed).
         </li>
         <li>
           <Mono>409</Mono> — the brain is at capacity (the charge is refunded).

@@ -2,10 +2,12 @@
  * Issue an API key for a wallet, gated by a fresh signed message.
  *
  *   POST /api/credits/key  { wallet, timestamp, signature }
- *   -> { apiKey }   (shown exactly once — store it securely)
+ *   -> { apiKey }
  *
  * The signature proves the caller controls the wallet's private key; the
  * timestamp must be recent so a captured signature cannot be replayed forever.
+ * The key is stored encrypted at rest (see issueApiKey), so the owner can
+ * re-view it later via /api/credits/keys instead of it being shown only once.
  */
 
 import { NextResponse } from "next/server";
