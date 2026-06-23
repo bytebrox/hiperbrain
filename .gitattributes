@@ -1,0 +1,25 @@
+# Normalize line endings: store everything as LF in the repo, regardless of the
+# OS a contributor is on. This ends the "LF will be replaced by CRLF" warnings
+# on Windows without changing any file's content.
+* text=auto eol=lf
+
+# Keep shell scripts LF (they break with CRLF).
+*.sh text eol=lf
+
+# Treat binary assets as binary so git never tries to normalize them.
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.woff binary
+*.woff2 binary
+*.ttf binary
+*.otf binary
+
+# SVGs are text.
+*.svg text eol=lf
+
+# Don't ship noise in the npm tarball / GitHub language stats.
+package-lock.json -diff linguist-generated=true

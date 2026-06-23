@@ -1,0 +1,13 @@
+# Build output and dependencies
+node_modules
+.next
+out
+dist
+coverage
+
+# Generated / vendored
+package-lock.json
+*.min.js
+
+# Generated changelogs
+**/CHANGELOG.md

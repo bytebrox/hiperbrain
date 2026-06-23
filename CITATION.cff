@@ -1,0 +1,55 @@
+cff-version: 1.2.0
+message: "If you use hiperbrain or @hiperbrain/core, please cite it as below."
+title: "hiperbrain"
+abstract: >-
+  A collective, brain-inspired computing engine built on Hyperdimensional
+  Computing (HDC / Vector Symbolic Architectures): one-shot learning,
+  analogical reasoning and fault-tolerant recall over 10,000-dimensional
+  hypervectors, with no neural network in the answer path.
+type: software
+authors:
+  - name: "hiperbrain"
+    website: "https://www.hiperbrain.com"
+repository-code: "https://github.com/bytebrox/hiperbrain"
+url: "https://www.hiperbrain.com"
+license: MIT
+keywords:
+  - hyperdimensional-computing
+  - vector-symbolic-architecture
+  - associative-memory
+  - one-shot-learning
+  - analogy
+  - neuro-symbolic
+references:
+  - type: article
+    title: >-
+      Hyperdimensional Computing: An Introduction to Computing in Distributed
+      Representation with High-Dimensional Random Vectors
+    authors:
+      - family-names: Kanerva
+        given-names: Pentti
+    year: 2009
+    journal: "Cognitive Computation"
+    volume: 1
+    issue: 2
+    start: 139
+    end: 159
+  - type: book
+    title: "Sparse Distributed Memory"
+    authors:
+      - family-names: Kanerva
+        given-names: Pentti
+    year: 1988
+    publisher:
+      name: "MIT Press"
+  - type: article
+    title: "Holographic Reduced Representations"
+    authors:
+      - family-names: Plate
+        given-names: Tony A.
+    year: 1995
+    journal: "IEEE Transactions on Neural Networks"
+    volume: 6
+    issue: 3
+    start: 623
+    end: 641

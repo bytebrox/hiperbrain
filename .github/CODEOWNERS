@@ -1,0 +1,14 @@
+# Code owners are requested for review automatically on every pull request.
+# Order matters: the last matching pattern wins.
+#
+# Replace @bytebrox with the GitHub user or team that should own each area.
+
+# Default owner for everything in the repo.
+*                       @bytebrox
+
+# The published engine: changes here affect every downstream consumer.
+/packages/core/         @bytebrox
+
+# Release, CI and repo automation.
+/.github/               @bytebrox
+/.changeset/            @bytebrox

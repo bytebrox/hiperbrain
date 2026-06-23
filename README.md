@@ -5,6 +5,16 @@
   <a href="https://www.hiperbrain.com"><strong>www.hiperbrain.com</strong></a>
 </p>
 
+<p align="center">
+  <a href="https://github.com/bytebrox/hiperbrain/actions/workflows/ci.yml"><img src="https://github.com/bytebrox/hiperbrain/actions/workflows/ci.yml/badge.svg" alt="CI" /></a>
+  <a href="https://www.npmjs.com/package/@hiperbrain/core"><img src="https://img.shields.io/npm/v/@hiperbrain/core?color=22d3ee&label=%40hiperbrain%2Fcore" alt="npm version" /></a>
+  <a href="https://www.npmjs.com/package/@hiperbrain/core"><img src="https://img.shields.io/npm/dm/@hiperbrain/core?color=22d3ee" alt="npm downloads" /></a>
+  <a href="https://bundlephobia.com/package/@hiperbrain/core"><img src="https://img.shields.io/bundlephobia/minzip/@hiperbrain/core?color=22d3ee&label=minzipped" alt="minzipped size" /></a>
+  <a href="https://www.npmjs.com/package/@hiperbrain/core"><img src="https://img.shields.io/badge/dependencies-0-brightgreen" alt="zero dependencies" /></a>
+  <a href="https://www.npmjs.com/package/@hiperbrain/core"><img src="https://img.shields.io/npm/types/@hiperbrain/core" alt="types included" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue" alt="MIT license" /></a>
+</p>
+
 hiperbrain is **not** another ChatGPT wrapper. It is a small, real, brain-inspired
 computing engine built on **Hyperdimensional Computing (HDC / Vector Symbolic
 Architectures)** - the same family of ideas neuroscientists use to model how

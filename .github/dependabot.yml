@@ -1,0 +1,32 @@
+version: 2
+updates:
+  # Root app dependencies (Next.js, Supabase, Solana, etc.).
+  - package-ecosystem: "npm"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 10
+    groups:
+      # Batch low-risk dev/tooling bumps into a single PR to cut noise.
+      dev-dependencies:
+        dependency-type: "development"
+    labels:
+      - "dependencies"
+
+  # The published @hiperbrain/core package.
+  - package-ecosystem: "npm"
+    directory: "/packages/core"
+    schedule:
+      interval: "weekly"
+    open-pull-requests-limit: 5
+    labels:
+      - "dependencies"
+      - "core"
+
+  # Keep the GitHub Actions used by CI/Release up to date.
+  - package-ecosystem: "github-actions"
+    directory: "/"
+    schedule:
+      interval: "weekly"
+    labels:
+      - "ci"
