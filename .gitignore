@@ -36,8 +36,14 @@ yarn-error.log*
 # vercel
 .vercel
 
-# one-off DB seeding / maintenance scripts (not needed by the app at runtime)
-/scripts/
+# one-off DB seeding / maintenance scripts (not needed by the app at runtime).
+# The automated Wikidata ingestor + its shared helper ARE tracked, because the
+# nightly "seed-brain" GitHub Action checks them out and runs them in CI.
+/scripts/*
+!/scripts/seed-wikidata.mjs
+!/scripts/lib
+/scripts/lib/*
+!/scripts/lib/ingest.mjs
 
 # marketing material (not part of the app)
 /marketing/

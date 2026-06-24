@@ -1,0 +1,48 @@
+name: Seed brain (Wikidata)
+
+# Continuously grows the collective brain by ingesting structured facts from
+# Wikidata's public SPARQL endpoint. Runs nightly and on demand.
+#
+# Required repository secrets (Settings → Secrets and variables → Actions):
+#   NEXT_PUBLIC_SUPABASE_URL    - your Supabase project URL
+#   SUPABASE_SERVICE_ROLE_KEY   - service-role key (server-side; never expose)
+
+on:
+  schedule:
+    # 03:17 UTC every night (off-peak; avoids the top-of-hour cron stampede).
+    - cron: "17 3 * * *"
+  workflow_dispatch:
+    inputs:
+      datasets:
+        description: "Datasets to ingest (space-separated; empty = all)"
+        required: false
+        default: ""
+      limit:
+        description: "Max rows per SPARQL query"
+        required: false
+        default: "5000"
+
+# Never let two seeding runs overlap.
+concurrency:
+  group: seed-brain
+  cancel-in-progress: false
+
+jobs:
+  seed:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+      # Mirror the CI workflow: the lockfile is generated on Windows and omits
+      # Linux-only optional deps, so the strict `npm ci` sync check fails here.
+      - run: npm install --no-audit --no-fund
+      - name: Ingest from Wikidata
+        env:
+          NEXT_PUBLIC_SUPABASE_URL: ${{ secrets.NEXT_PUBLIC_SUPABASE_URL }}
+          SUPABASE_SERVICE_ROLE_KEY: ${{ secrets.SUPABASE_SERVICE_ROLE_KEY }}
+          WIKIDATA_LIMIT: ${{ github.event.inputs.limit || '5000' }}
+          DATASETS: ${{ github.event.inputs.datasets || '' }}
+        run: node scripts/seed-wikidata.mjs $DATASETS
