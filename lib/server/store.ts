@@ -30,11 +30,39 @@ import { getServiceClient, hasSupabase } from "./supabase";
 export const MAX_FACTS = 500000;
 
 /**
- * Page size for reads. Kept at/below PostgREST's default `db-max-rows` (1000)
- * so a full page reliably signals "there may be more", letting us paginate
- * past the per-request row cap without changing any Supabase setting.
+ * Page size for reads. Capped at PostgREST's default `db-max-rows` (1000) so a
+ * single request returns as many rows as the server allows. We pre-count the
+ * rows, so we never rely on a full page to signal "there may be more".
  */
-const PAGE_SIZE = 500;
+const PAGE_SIZE = 1000;
+
+/**
+ * How many fact pages to fetch at once. Firing every page in parallel (hundreds
+ * of requests for a large brain) overwhelms PostgREST's connection pool and the
+ * whole read stalls or times out. A bounded window keeps the database happy
+ * while still pipelining enough requests to load 100k+ facts in a few seconds.
+ */
+const READ_CONCURRENCY = 10;
+
+/** Run `task` over `items` with at most `limit` promises in flight at a time. */
+async function mapWithConcurrency<T, R>(
+  items: T[],
+  limit: number,
+  task: (item: T) => Promise<R>,
+): Promise<R[]> {
+  const out = new Array<R>(items.length);
+  let next = 0;
+  async function worker(): Promise<void> {
+    while (true) {
+      const i = next++;
+      if (i >= items.length) return;
+      out[i] = await task(items[i]);
+    }
+  }
+  const workers = Array.from({ length: Math.min(limit, items.length) }, worker);
+  await Promise.all(workers);
+  return out;
+}
 
 export type AddStatus = "added" | "duplicate" | "full";
 export type FactStatus = "active" | "superseded" | "disputed";
@@ -110,9 +138,28 @@ export interface Dispute {
   ts: number;
 }
 
+/** Cheap counters for the homepage / activity-log headers. */
+export interface BrainCounts {
+  facts: number;
+  /** Distinct subjects + objects (matches KnowledgeBrain.stats().concepts). */
+  concepts: number;
+  /** Distinct relations. */
+  relations: number;
+}
+
 export interface FactStore {
   ensureSeeded(): Promise<void>;
   listFacts(): Promise<StoredFact[]>;
+  /**
+   * A bounded slice of the oldest active facts, for the 3D visualisation. Reads
+   * only `limit` rows from the database instead of the whole brain.
+   */
+  sample(limit: number): Promise<Fact[]>;
+  /**
+   * Live counters (facts / concepts / relations) computed in the database, so
+   * the headers never have to build or download the brain.
+   */
+  counts(): Promise<BrainCounts>;
   addFact(fact: Fact, meta?: FactMeta): Promise<AddResult>;
   /** The active fact for a subject+relation, or null. */
   findActiveBySR(subject: string, relation: string): Promise<ActiveValue | null>;
@@ -223,23 +270,24 @@ class SupabaseStore implements FactStore {
 
   async listFacts(): Promise<StoredFact[]> {
     // Page through results so we are not limited by PostgREST's per-request row
-    // cap. We know the row count up front, so every page (capped at MAX_FACTS)
-    // can be fetched in parallel instead of in a sequential await chain - a big
-    // latency win on large brains. Only active facts are served, so recall
-    // never sees superseded/disputed values. Pages whose range falls past the
-    // active-row count simply come back empty, and concatenating them in page
+    // cap. We know the row count up front, so the pages can be pipelined with a
+    // bounded number of requests in flight (firing all of them at once swamps
+    // the connection pool and stalls). Only active facts are served, so recall
+    // never sees superseded/disputed values, and concatenating the pages in
     // order preserves the ascending created_at ordering.
     const total = Math.min(await this.countActive(), MAX_FACTS);
     if (total === 0) return [];
 
-    const pages: Promise<FactRow[]>[] = [];
+    const ranges: [number, number][] = [];
     for (let from = 0; from < total; from += PAGE_SIZE) {
-      const to = Math.min(from + PAGE_SIZE, total) - 1;
-      pages.push(this.fetchFactsPage(from, to));
+      ranges.push([from, Math.min(from + PAGE_SIZE, total) - 1]);
     }
 
     const out: StoredFact[] = [];
-    for (const rows of await Promise.all(pages)) {
+    const pages = await mapWithConcurrency(ranges, READ_CONCURRENCY, ([from, to]) =>
+      this.fetchFactsPage(from, to),
+    );
+    for (const rows of pages) {
       for (const row of rows) {
         out.push({
           id: row.id,
@@ -252,6 +300,43 @@ class SupabaseStore implements FactStore {
       }
     }
     return out;
+  }
+
+  async sample(limit: number): Promise<Fact[]> {
+    // The visualisation only needs a small, well-connected seed graph, so we
+    // read just the oldest `limit` active facts (one or two small pages) instead
+    // of the entire brain.
+    const ranges: [number, number][] = [];
+    for (let from = 0; from < limit; from += PAGE_SIZE) {
+      ranges.push([from, Math.min(from + PAGE_SIZE, limit) - 1]);
+    }
+    const pages = await mapWithConcurrency(ranges, READ_CONCURRENCY, ([from, to]) =>
+      this.fetchFactsPage(from, to),
+    );
+    const out: Fact[] = [];
+    for (const rows of pages) {
+      for (const row of rows) {
+        out.push({ subject: row.subject, relation: row.relation, object: row.object });
+      }
+    }
+    return out;
+  }
+
+  async counts(): Promise<BrainCounts> {
+    // One round trip to a SQL function that counts everything in the database
+    // (see supabase/stats.sql). If that function has not been installed yet we
+    // fall back to the cheap exact fact count and let the caller fill the rest
+    // from a warm brain, so the page still loads instantly.
+    const { data, error } = await this.client.rpc("brain_stats");
+    const row = Array.isArray(data) ? data[0] : data;
+    if (!error && row) {
+      return {
+        facts: Number(row.facts) || 0,
+        concepts: Number(row.concepts) || 0,
+        relations: Number(row.relations) || 0,
+      };
+    }
+    return { facts: await this.countActive(), concepts: 0, relations: 0 };
   }
 
   async count(): Promise<number> {
@@ -481,6 +566,27 @@ export class MemoryStore implements FactStore {
         status: r.status,
         ts: r.ts,
       }));
+  }
+
+  async sample(limit: number): Promise<Fact[]> {
+    return this.rows
+      .filter((r) => r.status === "active")
+      .slice(0, limit)
+      .map((r) => ({ subject: r.subject, relation: r.relation, object: r.object }));
+  }
+
+  async counts(): Promise<BrainCounts> {
+    const concepts = new Set<string>();
+    const relations = new Set<string>();
+    let facts = 0;
+    for (const r of this.rows) {
+      if (r.status !== "active") continue;
+      facts++;
+      concepts.add(r.subject);
+      concepts.add(r.object);
+      relations.add(r.relation);
+    }
+    return { facts, concepts: concepts.size, relations: relations.size };
   }
 
   async count(): Promise<number> {

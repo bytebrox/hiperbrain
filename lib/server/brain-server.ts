@@ -9,6 +9,7 @@
 
 import { KnowledgeBrain } from "@hiperbrain/core";
 import { getFactsCached } from "./store";
+import type { BrainCounts } from "./store";
 
 // Building a large brain takes tens of seconds, so we keep it warm for a long
 // while. Freshness does not depend on this timer: the cache is also keyed on the
@@ -19,6 +20,7 @@ const TTL_MS = 15 * 60_000;
 
 const globalForBrain = globalThis as unknown as {
   __hbBrain?: { brain: KnowledgeBrain; at: number; count: number };
+  __hbCounts?: BrainCounts;
 };
 
 export async function getServerBrain(): Promise<KnowledgeBrain> {
@@ -29,5 +31,16 @@ export async function getServerBrain(): Promise<KnowledgeBrain> {
   }
   const brain = KnowledgeBrain.fromFacts(facts);
   globalForBrain.__hbBrain = { brain, at: Date.now(), count: facts.length };
+  // Remember the exact counters so /api/brain/stats can serve concepts/relations
+  // even when the SQL stats function is not installed, without rebuilding.
+  globalForBrain.__hbCounts = brain.stats();
   return brain;
+}
+
+/**
+ * The last known counters from a built brain on this instance, if any. Used as
+ * a fallback for the stats endpoint so it never has to build the brain itself.
+ */
+export function peekBrainCounts(): BrainCounts | null {
+  return globalForBrain.__hbCounts ?? null;
 }

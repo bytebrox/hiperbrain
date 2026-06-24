@@ -10,27 +10,24 @@
  */
 
 import { NextResponse } from "next/server";
-import { getFactsCached } from "@/lib/server/store";
+import { getStore } from "@/lib/server/store";
 
 export const dynamic = "force-dynamic";
-export const maxDuration = 60;
+export const maxDuration = 30;
 
 const DEFAULT_LIMIT = 1500;
-const MAX_LIMIT = 4000;
+const MAX_LIMIT = 3000;
 
 export async function GET(request: Request) {
   const { searchParams } = new URL(request.url);
   const limit = Math.min(Math.max(Number(searchParams.get("limit")) || DEFAULT_LIMIT, 1), MAX_LIMIT);
 
-  const all = await getFactsCached();
-  const facts = all.slice(0, limit).map((f) => ({
-    subject: f.subject,
-    relation: f.relation,
-    object: f.object,
-  }));
+  const store = getStore();
+  await store.ensureSeeded();
+  const facts = await store.sample(limit);
 
   return NextResponse.json(
-    { facts, total: all.length },
+    { facts, total: facts.length },
     { headers: { "Cache-Control": "public, max-age=30, s-maxage=120, stale-while-revalidate=600" } },
   );
 }
