@@ -33,10 +33,35 @@ const LIMIT = Number(process.env.WIKIDATA_LIMIT ?? 5000);
 const DELAY_MS = Number(process.env.WIKIDATA_DELAY_MS ?? 1500);
 
 /**
+ * Build a dataset for a single Wikidata property using the bounded sub-query
+ * pattern: grab the first LIMIT statements of the property, then let the label
+ * service name only that bounded set. This is timeout-proof for ANY property,
+ * including ones held by millions of entities (a top-level `wdt:Pxx` triple with
+ * a LIMIT still scans the whole property first, which times out at scale).
+ *
+ * `forward` is the human-readable relation written subject→object. Pass
+ * `{ reverse }` to also write the inverse triple object→subject.
+ */
+function prop(forward, pid, { reverse } = {}) {
+  return {
+    forward,
+    ...(reverse ? { reverse } : {}),
+    query: `SELECT ?subjectLabel ?objectLabel WHERE {
+      { SELECT ?subject ?object WHERE { ?subject wdt:${pid} ?object } LIMIT ${LIMIT} }
+      SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
+    }`,
+  };
+}
+
+/**
  * Each dataset SELECTs exactly two columns, `?subjectLabel` and `?objectLabel`.
  * `forward` is the relation subject→object; `reverse` (optional) also writes
  * the inverse triple object→subject, which lets the brain answer both
  * directions ("capital of France" and "country of Paris").
+ *
+ * Most datasets target a clean, recognisable relation. Some are functional (one
+ * value per subject, e.g. capital) and some are multi-valued (e.g. award,
+ * borders); both are fine — the brain superimposes a subject's facts either way.
  */
 const DATASETS = {
   capital: {
@@ -144,6 +169,70 @@ const DATASETS = {
       SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
     }`,
   },
+
+  // -------------------------------------------------------------------------
+  // Extra relations (bounded sub-query template; see prop()). These widen the
+  // brain's vocabulary of relations far beyond the original handful.
+  // -------------------------------------------------------------------------
+
+  // Geography / places
+  country: prop("country", "P17"),
+  locatedin: prop("located in", "P131"),
+  borders: prop("borders", "P47"),
+  headofstate: prop("head of state", "P35"),
+  headofgov: prop("head of government", "P6"),
+  anthem: prop("anthem", "P85"),
+
+  // People
+  spouse: prop("spouse", "P26"),
+  father: prop("father", "P22"),
+  mother: prop("mother", "P25"),
+  child: prop("child", "P40"),
+  educatedat: prop("educated at", "P69"),
+  employer: prop("employer", "P108"),
+  fieldofwork: prop("field of work", "P101"),
+  party: prop("political party", "P102"),
+  religion: prop("religion", "P140"),
+  award: prop("award", "P166"),
+  position: prop("position", "P39"),
+  speaks: prop("speaks", "P1412"),
+  instrument: prop("instrument", "P1303"),
+
+  // Creative works
+  composer: prop("composer", "P86"),
+  screenwriter: prop("screenwriter", "P58"),
+  producer: prop("producer", "P162"),
+  studio: prop("production company", "P272"),
+  origlang: prop("original language", "P364"),
+  origin: prop("country of origin", "P495"),
+  recordlabel: prop("record label", "P264"),
+  performer: prop("performer", "P175"),
+  basedon: prop("based on", "P144"),
+  setin: prop("set in", "P840"),
+
+  // Companies, products & tech
+  industry: prop("industry", "P452"),
+  ceo: prop("ceo", "P169"),
+  parentcompany: prop("parent company", "P749"),
+  ownedby: prop("owned by", "P127"),
+  manufacturer: prop("manufacturer", "P176"),
+  developer: prop("developer", "P178"),
+  publisher: prop("publisher", "P123"),
+  platform: prop("platform", "P400"),
+  os: prop("operating system", "P306"),
+  proglang: prop("programming language", "P277"),
+  produces: prop("produces", "P1056"),
+
+  // Arts, buildings & nature
+  creator: prop("creator", "P170"),
+  architect: prop("architect", "P84"),
+  movement: prop("movement", "P135"),
+  material: prop("made of", "P186"),
+  color: prop("color", "P462"),
+  sport: prop("sport", "P641"),
+  league: prop("league", "P118"),
+  team: prop("team", "P54"),
+  taxon: prop("parent taxon", "P171"),
 };
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
