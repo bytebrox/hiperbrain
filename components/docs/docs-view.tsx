@@ -115,7 +115,7 @@ const CONTENT: Record<string, React.ReactNode> = {
           points={[
             "Transparent - read the whole engine yourself",
             "Learns a new fact in one step, instantly",
-            "Runs on a plain CPU, in your browser, free",
+            "Runs on a plain CPU - no GPU, no model",
             "Reasoning is explicit, inspectable algebra",
             "Knowledge grows live as people teach it",
           ]}
@@ -558,11 +558,15 @@ confident = sigma >= 4 && margin >= 2`}
         <Mono>(subject, relation, object)</Mono> and shared with everyone.
       </p>
       <p>
-        Each browser rebuilds the brain locally from those triples and streams
-        new ones live as other people teach them. The vector math is identical
-        for all - only the knowledge is shared, and it grows every minute. The
-        brain you interact with is, quite literally, the sum of everyone who came
-        before you.
+        The brain is assembled from those triples on the server and answers your
+        questions there, so it can hold the entire collective memory - hundreds
+        of thousands of facts - without every visitor having to download and
+        rebuild it. New facts stream in live as other people teach them. The
+        vector math is identical for everyone; only the knowledge is shared, and
+        it grows every minute. The brain you interact with is, quite literally,
+        the sum of everyone who came before you. (With the{" "}
+        <Mono>@hiperbrain/core</Mono> SDK you can rebuild and run that very same
+        brain locally, too.)
       </p>
     </>
   ),
@@ -570,25 +574,32 @@ confident = sigma >= 4 && margin >= 2`}
   architecture: (
     <>
       <p>
-        The architecture is deliberately split so the <em>thinking</em> happens
-        on your device and the server only ever stores plain text:
+        The architecture splits storage from recall so the shared brain can
+        scale to the whole collective memory:
       </p>
       <ul className="mt-3 space-y-3">
         <li>
-          <Term>Client (your browser):</Term> all hypervector math -{" "}
-          <Mono>bind</Mono>, <Mono>bundle</Mono>, <Mono>permute</Mono>, cleanup,
-          analogy - runs here in TypeScript. The brain is rebuilt from the fact
-          list every time it changes.
+          <Term>Server (recall):</Term> holds the shared facts and builds the
+          collective brain from them in memory (cached per instance), then
+          answers <Mono>ask</Mono>, <Mono>analogy</Mono> and neighbour queries
+          with pure hypervector algebra - <Mono>bind</Mono>, <Mono>bundle</Mono>,{" "}
+          <Mono>permute</Mono>, cleanup. No GPU, no model. This keeps a
+          hundreds-of-thousands-of-facts brain off every visitor&apos;s device.
         </li>
         <li>
-          <Term>Server (Supabase / Postgres):</Term> stores the shared facts as
-          text triples and broadcasts new ones over a realtime channel. It never
-          stores or computes vectors.
+          <Term>Client (your browser):</Term> sends small queries, renders the
+          answers and shows a live sample of the brain. Nothing heavy is
+          downloaded. With the <Mono>@hiperbrain/core</Mono> SDK you can run all
+          the same math locally for your own brain, fully offline.
+        </li>
+        <li>
+          <Term>Database (Supabase / Postgres):</Term> stores the facts as text
+          triples and broadcasts new ones over a realtime channel.
         </li>
         <li>
           <Term>Live sync:</Term> when anyone teaches a fact, it is written to
-          Postgres and pushed to every connected browser, which folds it into its
-          local brain instantly.
+          Postgres, broadcast to every connected browser, and folded into the
+          server brain so recall reflects it.
         </li>
         <li>
           <Term>Moderation:</Term> every write passes server-side input
@@ -597,8 +608,9 @@ confident = sigma >= 4 && margin >= 2`}
         </li>
       </ul>
       <p className="mt-3">
-        Reads are cached briefly and paginated, so the shared brain can grow well
-        beyond a single database page without the client ever noticing.
+        Reads are cached briefly and the brain is reused between queries, so the
+        shared brain can grow far beyond a single database page while recall
+        stays fast.
       </p>
     </>
   ),
@@ -1160,9 +1172,8 @@ await hb.balance();                 // -> 989 — free`}
         <Mono>
           <a href="/benchmark">/benchmark</a>
         </Mono>{" "}
-        page runs a fixed set of known-answer questions against the live brain, in
-        your browser, every time you open it - nothing is precomputed or
-        cherry-picked.
+        page runs a fixed set of known-answer questions against the live brain,
+        every time you open it - nothing is precomputed or cherry-picked.
       </p>
       <p>
         Because an associative memory should <em>abstain</em> rather than guess,
@@ -1191,10 +1202,9 @@ await hb.balance();                 // -> 989 — free`}
       </p>
       <p className="mt-4">
         Alongside the scores the page reports the <Term>dataset version</Term>,
-        how many facts the brain currently holds, and the wall-clock{" "}
-        <Term>latency</Term> per query - typically a fraction of a millisecond,
-        because recall runs entirely in your browser with no server round-trip and
-        no model call.
+        how many questions were asked, and the wall-clock <Term>latency</Term>{" "}
+        per query - typically a few milliseconds, because recall is pure
+        hypervector algebra, not a model call.
       </p>
     </>
   ),

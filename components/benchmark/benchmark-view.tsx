@@ -1,11 +1,10 @@
 "use client";
 
-import { useMemo } from "react";
-import { useCollectiveBrain } from "@/lib/use-collective-brain";
+import { useEffect, useState } from "react";
 import {
   type BenchmarkItem,
+  type BenchmarkSummary,
   type ItemResult,
-  runBenchmark,
 } from "@/lib/benchmark";
 
 function pct(value: number): string {
@@ -24,79 +23,101 @@ function questionText(item: BenchmarkItem): string {
     : `${item.from} is to ${item.value} as ${item.to} is to ?`;
 }
 
-export function BenchmarkView() {
-  const { brain, status, ready, facts } = useCollectiveBrain();
-  const loading = status === "loading" || (status === "ready" && !ready);
+interface BenchmarkData {
+  results: ItemResult[];
+  summary: BenchmarkSummary;
+}
 
-  const { results, summary } = useMemo(
-    () => runBenchmark(brain),
-    // Recompute whenever the brain instance changes (i.e. after facts load).
-    [brain],
-  );
+export function BenchmarkView() {
+  const [data, setData] = useState<BenchmarkData | null>(null);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
+
+  useEffect(() => {
+    let cancelled = false;
+    fetch("/api/brain/benchmark")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error("failed"))))
+      .then((d: BenchmarkData) => {
+        if (!cancelled) {
+          setData(d);
+          setStatus("ready");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setStatus("error");
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
       <h1 className="text-2xl font-semibold tracking-tight">Benchmark</h1>
       <p className="mt-1 max-w-2xl text-sm text-muted">
-        The brain answers a fixed set of known-answer questions live, in your browser, right
-        now. It is allowed to say &ldquo;I don&apos;t know&rdquo;: an associative memory should
+        The brain answers a fixed set of known-answer questions live against the full collective
+        brain. It is allowed to say &ldquo;I don&apos;t know&rdquo;: an associative memory should
         abstain rather than invent an answer, so the telling number is not just accuracy but how
         rarely it is <span className="text-foreground">confidently wrong</span>.
       </p>
 
-      {loading ? (
-        <p className="mt-8 text-sm text-muted">Assembling the brain and scoring…</p>
+      {status === "error" ? (
+        <p className="mt-8 text-sm text-negative">Could not run the benchmark.</p>
+      ) : status === "loading" || !data ? (
+        <p className="mt-8 text-sm text-muted">Scoring against the collective brain…</p>
       ) : (
         <>
           <div className="mt-6 grid grid-cols-2 gap-3 sm:grid-cols-4">
             <Metric
               label="accuracy"
-              value={pct(summary.accuracy)}
-              hint={`${summary.correct}/${summary.total} correct`}
+              value={pct(data.summary.accuracy)}
+              hint={`${data.summary.correct}/${data.summary.total} correct`}
               tone="accent"
             />
             <Metric
               label="precision"
-              value={pct(summary.precision)}
+              value={pct(data.summary.precision)}
               hint="of confident answers"
               tone="positive"
             />
             <Metric
               label="confident-wrong"
-              value={pct(summary.hallucinationRate)}
+              value={pct(data.summary.hallucinationRate)}
               hint="hallucination analogue"
-              tone={summary.confidentWrong === 0 ? "positive" : "negative"}
+              tone={data.summary.confidentWrong === 0 ? "positive" : "negative"}
             />
             <Metric
               label="coverage"
-              value={pct(summary.coverage)}
-              hint={`${summary.abstained} abstained`}
+              value={pct(data.summary.coverage)}
+              hint={`${data.summary.abstained} abstained`}
               tone="muted"
             />
           </div>
 
           <p className="mt-4 text-xs text-muted">
-            {summary.correct} correct, {summary.confidentWrong} confidently wrong, and{" "}
-            {summary.abstained} abstained out of {summary.total}. Questions the brain
+            {data.summary.correct} correct, {data.summary.confidentWrong} confidently wrong, and{" "}
+            {data.summary.abstained} abstained out of {data.summary.total}. Questions the brain
             hasn&apos;t been taught show up as abstentions, not errors.
           </p>
 
           <dl className="mt-4 flex flex-wrap gap-x-5 gap-y-1 font-mono text-[11px] text-muted/80">
-            <Meta label="dataset" value={`${summary.version} · ${summary.total} questions`} />
-            <Meta label="brain" value={`${facts.length.toLocaleString()} facts loaded`} />
+            <Meta
+              label="dataset"
+              value={`${data.summary.version} · ${data.summary.total} questions`}
+            />
+            <Meta label="engine" value="collective brain · server-side recall" />
             <Meta
               label="speed"
-              value={`${ms(summary.latencyMsAvg)}/query · ${ms(summary.latencyMsTotal)} total`}
+              value={`${ms(data.summary.latencyMsAvg)}/query · ${ms(data.summary.latencyMsTotal)} total`}
             />
             <Meta label="run" value={RUN_DATE} />
           </dl>
           <p className="mt-2 text-[11px] text-muted/60">
-            Latency is wall-clock recall in your browser - no server round-trip, no model
-            call. Every answer is pure hypervector algebra.
+            Latency is server-side recall over the full brain - no model call. Every answer is
+            pure hypervector algebra.
           </p>
 
           <ul className="mt-6 divide-y divide-border border-y border-border">
-            {results.map((r, i) => (
+            {data.results.map((r, i) => (
               <ResultRow key={`${questionText(r.item)}-${i}`} result={r} />
             ))}
           </ul>

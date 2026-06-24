@@ -95,6 +95,24 @@ describe("KnowledgeBrain collective memory", () => {
     expect(brain.analogy("Dollar", "USA", "Brazil")[0].name).toBe("Real");
   });
 
+  it("finds similar concepts by shared properties (records of varying size)", () => {
+    // France & Germany share a currency (Euro) and continent (Europe); Japan is
+    // on its own. Records here have 1, 2 and 3 facts, exercising every packed
+    // record path (single XOR, two-way majority, dense majority).
+    const facts: Fact[] = [
+      { subject: "France", relation: "currency", object: "Euro" },
+      { subject: "France", relation: "continent", object: "Europe" },
+      { subject: "France", relation: "language", object: "French" },
+      { subject: "Germany", relation: "currency", object: "Euro" },
+      { subject: "Germany", relation: "continent", object: "Europe" },
+      { subject: "Japan", relation: "currency", object: "Yen" },
+    ];
+    const brain = KnowledgeBrain.fromFacts(facts);
+    // Germany should be France's nearest neighbour (two shared fillers).
+    expect(brain.similarConcepts("France", 2)[0].name).toBe("Germany");
+    expect(brain.similarConcepts("Germany", 1)[0].name).toBe("France");
+  });
+
   it("reports stats about its knowledge", () => {
     const brain = new KnowledgeBrain();
     brain.learn({ subject: "Paris", relation: "capitalOf", object: "France" });

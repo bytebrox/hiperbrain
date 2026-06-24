@@ -7,13 +7,12 @@ import { BrainLoader } from "./brain-loader";
 import { CommandBar } from "./command-bar";
 
 export function HomeHero() {
-  const { brain, facts, status, teach, ready, resolvers } = useCollectiveBrain();
+  const { stats, sampleFacts, status, teach, query } = useCollectiveBrain();
   const [value, setValue] = useState("");
   const canvasRef = useRef<BrainCanvasHandle>(null);
   const canvasAreaRef = useRef<HTMLDivElement>(null);
   const commandAreaRef = useRef<HTMLDivElement>(null);
-  const stats = brain.stats();
-  const loading = status === "loading" || (status === "ready" && !ready);
+  const loading = status === "loading";
 
   // Clicking a node fills the input; clicking anywhere outside the brain and the
   // command bar clears it again, so visitors are never stuck having to manually
@@ -42,19 +41,11 @@ export function HomeHero() {
         >
           <BrainCanvas
             ref={canvasRef}
-            facts={facts}
+            facts={sampleFacts}
             onNodeClick={(name) => setValue(`concepts like ${name}`)}
             className="h-full min-h-[160px] w-full flex-1 cursor-pointer lg:min-h-[160px]"
           />
-          {loading ? (
-            <BrainLoader
-              label={
-                status === "loading"
-                  ? "connecting to the shared brain…"
-                  : "assembling 10,000-dimensional memory…"
-              }
-            />
-          ) : null}
+          {loading ? <BrainLoader label="connecting to the shared brain…" /> : null}
         </div>
 
         <div className="mt-5 mb-5 shrink-0 text-center lg:mt-2 lg:mb-6">
@@ -70,8 +61,7 @@ export function HomeHero() {
           <CommandBar
             value={value}
             onValueChange={setValue}
-            brain={brain}
-            resolvers={resolvers}
+            query={query}
             onTeach={teach}
             onTrace={(payload) => canvasRef.current?.trace(payload)}
           />
@@ -84,7 +74,7 @@ export function HomeHero() {
               {stats.relations} relations
             </>
           ) : status === "error" ? (
-            "offline - showing a local brain"
+            "offline - couldn't reach the shared brain"
           ) : (
             "connecting to the shared brain..."
           )}

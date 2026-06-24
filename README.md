@@ -21,8 +21,8 @@ Architectures)** - the same family of ideas neuroscientists use to model how
 biological memory might actually work.
 
 You teach it facts. You ask it questions. It answers - not by calling a giant
-language model in some data center, but by doing pure mathematics on enormous
-vectors, **live in your browser**. No GPU. No language model. No per-question API bill.
+language model in some data center, but by doing **pure mathematics on enormous
+vectors**. No GPU. No language model. No per-question API bill.
 
 And the knowledge is **shared**: every fact anyone teaches becomes part of one
 collective memory that everyone draws from. A brain that the whole internet
@@ -68,10 +68,11 @@ it, in real time.
   the entire engine end to end.
 - **It learns in one shot.** Teaching a new fact is a *single* mathematical step.
   No training run, no fine-tuning, no waiting. Type it; it knows it instantly.
-- **It thinks in your browser.** All the heavy math runs client-side on a normal
-  CPU, accelerated by a *bit-packed* engine (bind becomes `XOR`, similarity
-  becomes `popcount`) that is 8x smaller in memory. The server only stores tiny
-  lines of text.
+- **It runs on a plain CPU.** No GPU and no model - just a *bit-packed* vector
+  engine (bind becomes `XOR`, similarity becomes `popcount`, 8x smaller in
+  memory). Run it yourself in the browser or in Node with the `@hiperbrain/core`
+  SDK; the shared brain runs the very same math on the server so it scales to the
+  whole collective memory.
 - **It is fault-tolerant like real memory.** Concepts are smeared
   *holographically* across all 10,000 dimensions. Corrupt a third of the vector
   and the right answer still comes back - there is an interactive demo of exactly
@@ -88,7 +89,7 @@ Hyperdimensional Computing is a long-overlooked third path:
 |---|---|---|
 | Transparency | Black box, billions of weights | Read the whole engine yourself |
 | Learning | Train for weeks on huge corpora | One step, instant, one-shot |
-| Hardware | GPU clusters, per-call cost | Plain CPU, in your browser, free |
+| Hardware | GPU clusters, per-call cost | Plain CPU, no GPU, free |
 | Reasoning | Implicit, unverifiable | Explicit, inspectable algebra |
 | Robustness | Fragile to weight corruption | Survives losing a third of its bits |
 
@@ -126,8 +127,10 @@ The full, plain-language walkthrough lives on the in-app
 
 ## One shared, collective brain
 
-- **Shared knowledge, local computation.** Facts live as tiny text triples; every
-  browser rebuilds the brain from them and runs all the vector math itself.
+- **Shared knowledge, scalable recall.** Facts live as tiny text triples; the
+  collective brain is built from them on the server and answers your queries
+  there, so it scales to hundreds of thousands of facts without every visitor
+  downloading it. With the SDK you can rebuild and run the very same brain locally.
 - **Additive by nature.** Because bundling is commutative, any number of
   contributors fold their facts into the same memory without stepping on each
   other.
@@ -172,8 +175,8 @@ screens what gets *written* into the shared memory.
 ## Measured, not claimed - the public benchmark
 
 Big claims deserve a number. The [`/benchmark`](https://www.hiperbrain.com/benchmark)
-page runs a fixed set of known-answer questions against the live brain in your
-browser and reports **accuracy**, **precision** (correct among confident answers)
+page runs a fixed set of known-answer questions against the live brain and
+reports **accuracy**, **precision** (correct among confident answers)
 and the **confident-wrong rate** - the HDC analogue of hallucination. Because the
 brain abstains instead of guessing, that last number stays near zero: it says
 "I don't know" rather than inventing an answer.

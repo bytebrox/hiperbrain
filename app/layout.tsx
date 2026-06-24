@@ -18,7 +18,7 @@ const plexMono = IBM_Plex_Mono({
 
 const TITLE = "hiperbrain - a brain that computes with 10,000-dimensional vectors";
 const DESCRIPTION =
-  "An interactive collective brain built on Hyperdimensional Computing (HDC / VSA). Teach it facts and ask it questions - it learns one-shot, reasons by analogy and is fault-tolerant, all in pure CPU math, live in your browser.";
+  "An interactive collective brain built on Hyperdimensional Computing (HDC / VSA). Teach it facts and ask it questions - it learns one-shot, reasons by analogy and is fault-tolerant, all in pure CPU vector math - no GPU, no language model.";
 
 export const metadata: Metadata = {
   metadataBase: new URL("https://www.hiperbrain.com"),
@@ -46,7 +46,7 @@ export const metadata: Metadata = {
   openGraph: {
     title: TITLE,
     description:
-      "A collective brain built on Hyperdimensional Computing. Teach it facts, ask it questions - the thinking happens live in your browser.",
+      "A collective brain built on Hyperdimensional Computing. Teach it facts, ask it questions - the thinking is pure vector algebra, no GPU and no language model.",
     url: "https://www.hiperbrain.com",
     siteName: "hiperbrain",
     locale: "en_US",
@@ -66,7 +66,7 @@ export const metadata: Metadata = {
     site: "@hiperbrainx",
     creator: "@hiperbrainx",
     description:
-      "A collective brain built on Hyperdimensional Computing. Teach it facts, ask it questions - the thinking happens live in your browser.",
+      "A collective brain built on Hyperdimensional Computing. Teach it facts, ask it questions - the thinking is pure vector algebra, no GPU and no language model.",
     images: ["/banner.png"],
   },
   robots: {

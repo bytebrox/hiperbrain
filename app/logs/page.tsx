@@ -1,10 +1,17 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { HypervectorHeatmap } from "@/components/heatmap";
-import { useCollectiveBrain } from "@/lib/use-collective-brain";
+import { getBrowserClient } from "@/lib/supabase-browser";
 
 const PAGE_SIZE = 50;
+
+interface LogFact {
+  subject: string;
+  relation: string;
+  object: string;
+  ts: number;
+}
 
 interface Dispute {
   subject: string;
@@ -14,6 +21,12 @@ interface Dispute {
   status: "superseded" | "disputed";
   note: string | null;
   ts: number;
+}
+
+interface Stats {
+  facts: number;
+  concepts: number;
+  relations: number;
 }
 
 function relativeTime(ts?: number): string {
@@ -28,14 +41,31 @@ function relativeTime(ts?: number): string {
 }
 
 export default function LogsPage() {
-  const { facts, brain, status } = useCollectiveBrain();
-  const stats = brain.stats();
+  const [stats, setStats] = useState<Stats | null>(null);
+  const [thought, setThought] = useState<Int8Array | null>(null);
+  const [facts, setFacts] = useState<LogFact[]>([]);
+  const [total, setTotal] = useState(0);
+  const [status, setStatus] = useState<"loading" | "ready" | "error">("loading");
   const [query, setQuery] = useState("");
   const [page, setPage] = useState(0);
   const [disputes, setDisputes] = useState<Dispute[]>([]);
 
+  // Counters + thought fingerprint come from the server-side brain (no facts
+  // shipped to the browser).
   useEffect(() => {
     let cancelled = false;
+    fetch("/api/brain/stats")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled) setStats({ facts: d.facts, concepts: d.concepts, relations: d.relations });
+      })
+      .catch(() => {});
+    fetch("/api/brain/thought")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!cancelled && Array.isArray(d.vector)) setThought(Int8Array.from(d.vector));
+      })
+      .catch(() => {});
     fetch("/api/disputes")
       .then((r) => r.json())
       .then((d) => {
@@ -47,23 +77,57 @@ export default function LogsPage() {
     };
   }, []);
 
-  // All filtering and paging happens client-side - the facts are already loaded
-  // for the brain/heatmap, so this adds zero extra server or database load.
-  const filtered = useMemo(() => {
-    const newestFirst = [...facts].reverse();
-    const q = query.trim().toLowerCase();
-    if (!q) return newestFirst;
-    return newestFirst.filter(
-      (f) =>
-        f.subject.toLowerCase().includes(q) ||
-        f.relation.toLowerCase().includes(q) ||
-        f.object.toLowerCase().includes(q),
-    );
-  }, [facts, query]);
+  // Search + paging run in the database; the client only ever holds one page.
+  const reqId = useRef(0);
+  const loadFacts = useCallback(async (q: string, p: number) => {
+    const id = ++reqId.current;
+    const params = new URLSearchParams({
+      q,
+      limit: String(PAGE_SIZE),
+      offset: String(p * PAGE_SIZE),
+    });
+    try {
+      const res = await fetch(`/api/facts?${params.toString()}`);
+      if (!res.ok) throw new Error("failed");
+      const data = (await res.json()) as { facts: LogFact[]; total: number };
+      if (id !== reqId.current) return;
+      setFacts(data.facts);
+      setTotal(data.total);
+      setStatus("ready");
+    } catch {
+      if (id === reqId.current) setStatus("error");
+    }
+  }, []);
 
-  const totalPages = Math.max(1, Math.ceil(filtered.length / PAGE_SIZE));
+  // Debounce search input; reset to the first page whenever the query changes.
+  useEffect(() => {
+    const t = setTimeout(() => void loadFacts(query.trim(), page), query ? 250 : 0);
+    return () => clearTimeout(t);
+  }, [query, page, loadFacts]);
+
+  // Live: when someone teaches a new fact, refresh the first unfiltered page and
+  // bump the counter so the log keeps feeling alive.
+  useEffect(() => {
+    const supabase = getBrowserClient();
+    if (!supabase) return;
+    const channel = supabase
+      .channel("logs-stream")
+      .on(
+        "postgres_changes",
+        { event: "INSERT", schema: "public", table: "facts" },
+        () => {
+          setStats((s) => (s ? { ...s, facts: s.facts + 1 } : s));
+          if (page === 0 && query.trim() === "") void loadFacts("", 0);
+        },
+      )
+      .subscribe();
+    return () => {
+      void supabase.removeChannel(channel);
+    };
+  }, [page, query, loadFacts]);
+
+  const totalPages = Math.max(1, Math.ceil(total / PAGE_SIZE));
   const safePage = Math.min(page, totalPages - 1);
-  const recent = filtered.slice(safePage * PAGE_SIZE, safePage * PAGE_SIZE + PAGE_SIZE);
 
   return (
     <div className="mx-auto w-full max-w-6xl px-4 py-12 sm:px-6">
@@ -76,13 +140,17 @@ export default function LogsPage() {
         </div>
         <div className="flex flex-col items-center gap-2">
           <div className="overflow-hidden rounded-lg border border-border bg-black/40 p-1 shadow-[0_0_30px_-12px_rgba(34,211,238,0.5)]">
-            <HypervectorHeatmap
-              vector={brain.thoughtVector()}
-              columns={100}
-              cell={2}
-              gap={0}
-              className="block rounded"
-            />
+            {thought ? (
+              <HypervectorHeatmap
+                vector={thought}
+                columns={100}
+                cell={2}
+                gap={0}
+                className="block rounded"
+              />
+            ) : (
+              <div className="h-[200px] w-[200px]" />
+            )}
           </div>
           <span className="font-mono text-[10px] uppercase tracking-wider text-muted">
             thought fingerprint
@@ -91,9 +159,9 @@ export default function LogsPage() {
       </div>
 
       <div className="mt-6 flex gap-6 border-y border-border py-4 font-mono text-sm">
-        <Stat value={stats.facts} label="facts" />
-        <Stat value={stats.concepts} label="concepts" />
-        <Stat value={stats.relations} label="relations" />
+        <Stat value={stats?.facts ?? 0} label="facts" />
+        <Stat value={stats?.concepts ?? 0} label="concepts" />
+        <Stat value={stats?.relations ?? 0} label="relations" />
       </div>
 
       {disputes.length > 0 ? (
@@ -153,15 +221,15 @@ export default function LogsPage() {
               className="w-full rounded-sm border border-border bg-surface/70 px-3 py-2 font-mono text-sm text-foreground outline-none transition-colors placeholder:text-muted/40 focus:border-accent/60 sm:max-w-sm"
             />
             <span className="shrink-0 font-mono text-xs text-muted">
-              {filtered.length.toLocaleString()} {query.trim() ? "matches" : "facts"}
+              {total.toLocaleString()} {query.trim() ? "matches" : "facts"}
             </span>
           </div>
 
-          {recent.length === 0 ? (
+          {facts.length === 0 ? (
             <p className="mt-8 text-sm text-muted">No facts match “{query.trim()}”.</p>
           ) : (
             <ul className="mt-2 divide-y divide-border">
-              {recent.map((fact, i) => (
+              {facts.map((fact, i) => (
                 <li
                   key={`${fact.subject}-${fact.relation}-${fact.object}-${safePage}-${i}`}
                   className="flex items-center justify-between gap-4 py-3 text-sm"
@@ -210,7 +278,8 @@ export default function LogsPage() {
 function Stat({ value, label }: { value: number; label: string }) {
   return (
     <span>
-      <span className="text-accent">{value}</span> <span className="text-muted">{label}</span>
+      <span className="text-accent">{value.toLocaleString()}</span>{" "}
+      <span className="text-muted">{label}</span>
     </span>
   );
 }

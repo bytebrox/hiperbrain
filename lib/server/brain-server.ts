@@ -10,7 +10,12 @@
 import { KnowledgeBrain } from "@hiperbrain/core";
 import { getFactsCached } from "./store";
 
-const TTL_MS = 60_000;
+// Building a large brain takes tens of seconds, so we keep it warm for a long
+// while. Freshness does not depend on this timer: the cache is also keyed on the
+// active fact count, so any taught/ingested fact rebuilds it on the next query.
+// The TTL is only a safety refresh for slow drift (e.g. status changes that keep
+// the count identical).
+const TTL_MS = 15 * 60_000;
 
 const globalForBrain = globalThis as unknown as {
   __hbBrain?: { brain: KnowledgeBrain; at: number; count: number };

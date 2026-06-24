@@ -27,7 +27,7 @@ import { isFunctional } from "./relations";
 import { getServiceClient, hasSupabase } from "./supabase";
 
 /** Maximum number of facts the shared brain will hold. */
-export const MAX_FACTS = 200000;
+export const MAX_FACTS = 500000;
 
 /**
  * Page size for reads. Kept at/below PostgREST's default `db-max-rows` (1000)

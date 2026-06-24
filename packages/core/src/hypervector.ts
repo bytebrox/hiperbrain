@@ -100,6 +100,24 @@ function tieSign(i: number): -1 | 1 {
   return (h & 1) === 0 ? 1 : -1;
 }
 
+let cachedTieMask: { dim: number; mask: Uint32Array } | null = null;
+
+/**
+ * Bit-packed `tieSign` for every index, cached per dimensionality: bit set means
+ * the tie resolves to -1. Lets callers break the exact ties of a packed majority
+ * vote without touching the dense form.
+ */
+export function packedTieSigns(dimensions: number = DIMENSIONS): Uint32Array {
+  if (cachedTieMask && cachedTieMask.dim === dimensions) return cachedTieMask.mask;
+  const words = (dimensions + 31) >>> 5;
+  const mask = new Uint32Array(words);
+  for (let i = 0; i < dimensions; i++) {
+    if (tieSign(i) === -1) mask[i >>> 5] |= 1 << (i & 31);
+  }
+  cachedTieMask = { dim: dimensions, mask };
+  return mask;
+}
+
 /** Create a random bipolar hypervector using the provided RNG. */
 export function randomHypervector(
   dimensions: number = DIMENSIONS,
@@ -128,6 +146,49 @@ export function seededHypervector(
   // Warm up the generator so the first outputs are well mixed.
   for (let i = 0; i < 8; i++) rng();
   return randomHypervector(dimensions, rng);
+}
+
+/** sfc32 variant returning raw 32-bit words (used for fast packed generation). */
+function sfc32u(a: number, b: number, c: number, d: number): () => number {
+  return function () {
+    a |= 0;
+    b |= 0;
+    c |= 0;
+    d |= 0;
+    const t = (((a + b) | 0) + d) | 0;
+    d = (d + 1) | 0;
+    a = b ^ (b >>> 9);
+    b = (c + (c << 3)) | 0;
+    c = (c << 21) | (c >>> 11);
+    c = (c + t) | 0;
+    return t >>> 0;
+  };
+}
+
+/**
+ * Deterministically generate the BIT-PACKED form of a label's symbol directly,
+ * drawing 32 random sign-bits per PRNG call instead of one float per dimension.
+ * This is ~32x fewer RNG calls than building the dense vector and then packing,
+ * which is the dominant cost when a brain holds hundreds of thousands of
+ * symbols. The bit distribution is identical (uniform ±1), so the result is a
+ * statistically equivalent random symbol; HDC reasoning is basis-independent,
+ * so recall behaviour is unchanged. Unused bits in the final word are zeroed so
+ * packed Hamming/XOR math stays exact.
+ */
+export function seededPackedHypervector(
+  label: string,
+  dimensions: number = DIMENSIONS,
+  seed = 0,
+): Uint32Array {
+  const mix = xmur3(`${label}\u0000${seed}`);
+  const rng = sfc32u(mix(), mix(), mix(), mix());
+  for (let i = 0; i < 8; i++) rng();
+  const words = (dimensions + 31) >>> 5;
+  const out = new Uint32Array(words);
+  for (let w = 0; w < words; w++) out[w] = rng();
+  const rem = dimensions & 31;
+  if (rem !== 0) out[words - 1] &= (1 << rem) - 1;
+  return out;
 }
 
 /** Assert that two vectors share the same dimensionality. */

@@ -1,10 +1,12 @@
 "use client";
 
 import { useEffect, useRef, useState, useSyncExternalStore } from "react";
-import { type KnowledgeBrain, recallConfidence } from "@hiperbrain/core";
-import { parseCommand, type Command } from "@/lib/parse-command";
-import { canonicalRelation } from "@/lib/relation-aliases";
-import type { BrainResolvers, TeachOutcome } from "@/lib/use-collective-brain";
+import { parseCommand } from "@/lib/parse-command";
+import type {
+  BrainQuery,
+  QueryResult,
+  TeachOutcome,
+} from "@/lib/use-collective-brain";
 import type { TracePayload } from "./brain-canvas";
 import {
   type Example,
@@ -19,8 +21,8 @@ import {
 interface CommandBarProps {
   value: string;
   onValueChange: (value: string) => void;
-  brain: KnowledgeBrain;
-  resolvers: BrainResolvers | null;
+  /** Ask the server-side brain. Returns null on network error. */
+  query: (q: BrainQuery) => Promise<QueryResult | null>;
   onTeach: (fact: { subject: string; relation: string; object: string }) => Promise<TeachOutcome>;
   /** Fires when a query resolves confidently, so the graph can visualise it. */
   onTrace?: (payload: TracePayload) => void;
@@ -45,6 +47,15 @@ function kindOf(cmdKind: ReturnType<typeof parseCommand>["kind"]): ExampleKind |
   return null;
 }
 
+/** Turn a parsed command into the query payload the server understands. */
+function toQuery(cmd: ReturnType<typeof parseCommand>): BrainQuery | null {
+  if (cmd.kind === "ask") return { kind: "ask", subject: cmd.subject, relation: cmd.relation };
+  if (cmd.kind === "analogy")
+    return { kind: "analogy", value: cmd.value, from: cmd.from, to: cmd.to };
+  if (cmd.kind === "neighbors") return { kind: "neighbors", entity: cmd.entity };
+  return null;
+}
+
 const REDUCED_QUERY = "(prefers-reduced-motion: reduce)";
 
 function usePrefersReducedMotion(): boolean {
@@ -59,20 +70,19 @@ function usePrefersReducedMotion(): boolean {
   );
 }
 
-export function CommandBar({
-  value,
-  onValueChange,
-  brain,
-  resolvers,
-  onTeach,
-  onTrace,
-}: CommandBarProps) {
+export function CommandBar({ value, onValueChange, query, onTeach, onTrace }: CommandBarProps) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [pending, setPending] = useState(false);
   const [taught, setTaught] = useState<TeachOutcome | null>(null);
   // The input value that produced the current `taught` message, so any change -
   // typing OR clicking a chip - automatically dismisses it.
   const [taughtForValue, setTaughtForValue] = useState<string | null>(null);
+
+  // The latest recall result and the exact input it was computed for, so a stale
+  // in-flight answer never renders against a newer query.
+  const [result, setResult] = useState<QueryResult | null>(null);
+  const [resultFor, setResultFor] = useState<string>("");
+  const [querying, setQuerying] = useState(false);
 
   const [focused, setFocused] = useState(false);
   const reduced = usePrefersReducedMotion();
@@ -83,6 +93,7 @@ export function CommandBar({
   const cmd = parseCommand(value);
   const currentKind = kindOf(cmd.kind);
   const showTaught = taught && value === taughtForValue ? taught : null;
+  const showResult = result && resultFor === value ? result : null;
   const placeholderActive = !reduced && !focused && value === "";
 
   // Shuffle the example chips once on mount (deferred so it is not a synchronous
@@ -92,19 +103,33 @@ export function CommandBar({
     return () => cancelAnimationFrame(id);
   }, []);
 
-  // When a query resolves to a confident answer, hand the graph the concepts it
-  // reasoned over so it can light up the actual computation. Debounced so fast
-  // typing doesn't thrash the animation.
+  // Resolve the query on the server (debounced). For teach/empty/invalid there
+  // is nothing to recall, so we clear any previous answer. When a confident
+  // result arrives, hand its trace to the graph so it can light up the path.
   useEffect(() => {
-    if (!onTrace) return;
-    const id = window.setTimeout(() => {
-      const payload = buildTrace(brain, resolvers, cmd);
-      if (payload) onTrace(payload);
+    const c = parseCommand(value);
+    const q = toQuery(c);
+    if (!q) {
+      setResult(null);
+      setResultFor(value);
+      setQuerying(false);
+      return;
+    }
+    let cancelled = false;
+    setQuerying(true);
+    const id = window.setTimeout(async () => {
+      const r = await query(q);
+      if (cancelled) return;
+      setResult(r);
+      setResultFor(value);
+      setQuerying(false);
+      if (r?.trace && onTrace) onTrace(r.trace);
     }, 220);
-    return () => window.clearTimeout(id);
-    // `cmd` is derived from `value`; depending on `value` covers it.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [value, brain, resolvers, onTrace]);
+    return () => {
+      cancelled = true;
+      window.clearTimeout(id);
+    };
+  }, [value, query, onTrace]);
 
   // Typewriter placeholder. When inactive we simply stop; `typed` is ignored by
   // the placeholder unless active, so there is no need to reset it here.
@@ -238,9 +263,9 @@ export function CommandBar({
       <div className="mt-4 flex h-44 items-center justify-center overflow-hidden sm:mt-6">
         <div className="w-full">
           <Result
-            brain={brain}
-            resolvers={resolvers}
             cmd={cmd}
+            result={showResult}
+            querying={querying}
             pending={pending}
             taught={showTaught}
             onPick={pick}
@@ -278,12 +303,7 @@ export function CommandBar({
 
 function Spinner({ className }: { className?: string }) {
   return (
-    <svg
-      className={`animate-spin ${className ?? ""}`}
-      viewBox="0 0 24 24"
-      fill="none"
-      aria-hidden
-    >
+    <svg className={`animate-spin ${className ?? ""}`} viewBox="0 0 24 24" fill="none" aria-hidden>
       <circle cx="12" cy="12" r="9" stroke="currentColor" strokeWidth={2.5} opacity={0.2} />
       <path d="M21 12a9 9 0 0 0-9-9" stroke="currentColor" strokeWidth={2.5} strokeLinecap="round" />
     </svg>
@@ -338,29 +358,25 @@ function ConfidencePill({ sigma, score }: { sigma: number; score: number }) {
   );
 }
 
-function Suggestion({ query, onPick }: { query: string; onPick: (text: string) => void }) {
+function Thinking() {
   return (
-    <button
-      type="button"
-      onClick={() => onPick(query)}
-      className="mt-2 rounded-sm border border-accent/40 px-2.5 py-1 font-mono text-xs text-accent transition-colors hover:bg-accent/10"
-    >
-      did you mean: {query}?
-    </button>
+    <p className="text-center text-sm text-muted">
+      Recalling<AnimatedDots />
+    </p>
   );
 }
 
 function Result({
-  brain,
-  resolvers,
   cmd,
+  result,
+  querying,
   pending,
   taught,
   onPick,
 }: {
-  brain: KnowledgeBrain;
-  resolvers: BrainResolvers | null;
   cmd: ReturnType<typeof parseCommand>;
+  result: QueryResult | null;
+  querying: boolean;
   pending: boolean;
   taught: TeachOutcome | null;
   onPick: (text: string) => void;
@@ -397,46 +413,46 @@ function Result({
     }
     return (
       <p className="text-center text-sm text-muted">
-        Press <kbd className="rounded border border-border px-1.5 py-0.5 text-xs">Enter</kbd>{" "}
-        to teach: the <span className="text-foreground">{cmd.relation}</span> of{" "}
+        Press <kbd className="rounded border border-border px-1.5 py-0.5 text-xs">Enter</kbd> to
+        teach: the <span className="text-foreground">{cmd.relation}</span> of{" "}
         <span className="text-foreground">{cmd.subject}</span> is{" "}
         <span className="text-foreground">{cmd.object}</span>
       </p>
     );
   }
 
+  // Recall is resolving on the server, or a stale result is being replaced.
+  if (!result) {
+    return querying ? <Thinking /> : <p className="text-center text-sm text-muted">&nbsp;</p>;
+  }
+
   if (cmd.kind === "analogy") {
-    const matches = brain.analogy(cmd.value, cmd.from, cmd.to, 4);
-    const conf = recallConfidence(matches);
-    if (!conf.confident) {
+    if (!result.confident) {
       return (
         <p className="text-center text-sm text-muted">
           To reason by analogy, the brain needs to know both{" "}
           <span className="text-foreground">{cmd.from}</span> and{" "}
-          <span className="text-foreground">{cmd.to}</span> well. Teach it a few facts
-          about them first.
+          <span className="text-foreground">{cmd.to}</span> well. Teach it a few facts about them
+          first.
         </p>
       );
     }
-    // The relation the brain deduced purely from algebra, to make it explainable.
-    const recovered = brain.recoverRelation(cmd.value, cmd.from, 1)[0];
-    const others = matches.slice(1).filter((m) => m.score > 0.05);
+    const others = result.others ?? [];
     return (
       <div className="text-center">
-        <div className="text-3xl font-semibold tracking-tight text-accent">{matches[0].name}</div>
+        <div className="text-3xl font-semibold tracking-tight text-accent">{result.answer}</div>
         <div className="mt-1 flex items-center justify-center gap-2 text-sm text-muted">
           <span>
             {cmd.from} is to {cmd.value} as {cmd.to} is to{" "}
-            <span className="text-foreground">{matches[0].name}</span>
+            <span className="text-foreground">{result.answer}</span>
           </span>
-          <ConfidencePill sigma={conf.sigma} score={conf.score} />
+          <ConfidencePill sigma={result.sigma ?? 0} score={result.score ?? 0} />
         </div>
         <div className="mt-2 text-xs text-muted/60">
           solved by vector algebra - no lookup
-          {recovered ? (
+          {result.relation ? (
             <>
-              {" · "}deduced relation:{" "}
-              <span className="text-muted">{recovered.name}</span>
+              {" · "}deduced relation: <span className="text-muted">{result.relation}</span>
             </>
           ) : null}
         </div>
@@ -450,15 +466,14 @@ function Result({
   }
 
   if (cmd.kind === "neighbors") {
-    const entity =
-      resolvers?.concept.resolve(cmd.entity)?.name ?? cmd.entity;
-    const neighbors = brain.similarConcepts(entity, 6).filter((m) => m.score > 0.05);
+    const entity = result.entity ?? cmd.entity;
+    const neighbors = result.neighbors ?? [];
     if (neighbors.length === 0) {
       return (
         <p className="text-center text-sm text-muted">
           The brain needs to know a few facts about{" "}
-          <span className="text-foreground">{cmd.entity}</span> before it can find
-          related concepts.
+          <span className="text-foreground">{cmd.entity}</span> before it can find related
+          concepts.
         </p>
       );
     }
@@ -488,13 +503,7 @@ function Result({
   }
 
   // Ask
-  const relation = canonicalRelation(cmd.relation);
-  const matches = brain.ask(cmd.subject, relation, 4);
-  const conf = recallConfidence(matches);
-  if (!conf.confident) {
-    // Fall back to typo-tolerant resolution: maybe the subject or relation is
-    // just misspelled. Only suggest a correction that actually has an answer.
-    const suggestion = suggestCorrection(brain, resolvers, cmd.subject, cmd.relation);
+  if (!result.confident) {
     return (
       <div className="text-center">
         <p className="text-sm text-muted">
@@ -503,20 +512,19 @@ function Result({
             {cmd.relation} of {cmd.subject} is …
           </span>
         </p>
-        {suggestion ? <Suggestion query={suggestion} onPick={onPick} /> : null}
       </div>
     );
   }
 
-  const others = matches.slice(1).filter((m) => m.score > 0.05);
+  const others = result.others ?? [];
   return (
     <div className="text-center">
-      <div className="text-3xl font-semibold tracking-tight text-accent">{matches[0].name}</div>
+      <div className="text-3xl font-semibold tracking-tight text-accent">{result.answer}</div>
       <div className="mt-1 flex items-center justify-center gap-2 text-sm text-muted">
         <span>
           the {cmd.relation} of {cmd.subject}
         </span>
-        <ConfidencePill sigma={conf.sigma} score={conf.score} />
+        <ConfidencePill sigma={result.sigma ?? 0} score={result.score ?? 0} />
       </div>
       {others.length > 0 ? (
         <div className="mt-2 text-xs text-muted/70">
@@ -525,99 +533,6 @@ function Result({
       ) : null}
     </div>
   );
-}
-
-/**
- * Try to repair a failed ask by resolving the subject/relation to the closest
- * known names. Returns a corrected query string only if the repair differs from
- * the input and produces a confident answer; otherwise null.
- */
-function suggestCorrection(
-  brain: KnowledgeBrain,
-  resolvers: BrainResolvers | null,
-  subject: string,
-  relation: string,
-): string | null {
-  if (!resolvers) return null;
-  const subj = resolvers.concept.resolve(subject)?.name ?? subject;
-  const rel = resolvers.relation.resolve(relation)?.name ?? relation;
-  if (subj === subject && rel === relation) return null;
-  const conf = recallConfidence(brain.ask(subj, canonicalRelation(rel), 2));
-  if (!conf.confident) return null;
-  return `${rel} of ${subj}`;
-}
-
-/**
- * Translate a confident query into a trace the graph can animate. Mirrors the
- * branches in <Result> (including the typo-repair fallback) but returns the
- * canonical concept names and the hops the "thought" travels along. Returns
- * null when there is nothing worth showing yet.
- */
-function buildTrace(
-  brain: KnowledgeBrain,
-  resolvers: BrainResolvers | null,
-  cmd: Command,
-): TracePayload | null {
-  if (cmd.kind === "ask") {
-    let subject = cmd.subject;
-    let relation = canonicalRelation(cmd.relation);
-    let matches = brain.ask(subject, relation, 4);
-    let conf = recallConfidence(matches);
-    if (!conf.confident && resolvers) {
-      const s2 = resolvers.concept.resolve(cmd.subject)?.name ?? subject;
-      const r2 = canonicalRelation(resolvers.relation.resolve(cmd.relation)?.name ?? relation);
-      const m2 = brain.ask(s2, r2, 4);
-      const c2 = recallConfidence(m2);
-      if (c2.confident) {
-        subject = s2;
-        relation = r2;
-        matches = m2;
-        conf = c2;
-      }
-    }
-    if (!conf.confident) return null;
-    const answer = matches[0].name;
-    return {
-      kind: "ask",
-      focus: [subject],
-      answer,
-      relation,
-      segments: [[subject, answer]],
-    };
-  }
-
-  if (cmd.kind === "analogy") {
-    const matches = brain.analogy(cmd.value, cmd.from, cmd.to, 4);
-    const conf = recallConfidence(matches);
-    if (!conf.confident) return null;
-    const answer = matches[0].name;
-    const recovered = brain.recoverRelation(cmd.value, cmd.from, 1)[0];
-    return {
-      kind: "analogy",
-      focus: [cmd.from, cmd.to, cmd.value],
-      answer,
-      relation: recovered?.name ?? null,
-      segments: [
-        [cmd.from, cmd.to],
-        [cmd.value, answer],
-      ],
-    };
-  }
-
-  if (cmd.kind === "neighbors") {
-    const entity = resolvers?.concept.resolve(cmd.entity)?.name ?? cmd.entity;
-    const neighbors = brain.similarConcepts(entity, 4).filter((m) => m.score > 0.05);
-    if (neighbors.length === 0) return null;
-    return {
-      kind: "neighbors",
-      focus: [entity],
-      answer: null,
-      relation: null,
-      segments: neighbors.slice(0, 3).map((m) => [entity, m.name] as [string, string]),
-    };
-  }
-
-  return null;
 }
 
 function EmptyState({ onPick }: { onPick: (text: string) => void }) {
