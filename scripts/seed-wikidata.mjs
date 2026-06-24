@@ -118,27 +118,31 @@ const DATASETS = {
       SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
     } LIMIT ${LIMIT}`,
   },
+  // Person datasets: properties P27/P19/P106 are held almost exclusively by
+  // humans, so we skip the expensive `wdt:P31 wd:Q5` join (Q5 has ~10M members
+  // and gets fully scanned before LIMIT, which times out). Selecting the
+  // entities in an inner sub-query with LIMIT lets the engine stop early, then
+  // the label service only labels that bounded set.
   nationality: {
-    // Humans → country of citizenship. A huge, richly-connected slice.
     forward: "nationality",
     query: `SELECT ?subjectLabel ?objectLabel WHERE {
-      ?subject wdt:P31 wd:Q5 ; wdt:P27 ?object .
+      { SELECT ?subject ?object WHERE { ?subject wdt:P27 ?object } LIMIT ${LIMIT} }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-    } LIMIT ${LIMIT}`,
+    }`,
   },
   birthplace: {
     forward: "birthplace",
     query: `SELECT ?subjectLabel ?objectLabel WHERE {
-      ?subject wdt:P31 wd:Q5 ; wdt:P19 ?object .
+      { SELECT ?subject ?object WHERE { ?subject wdt:P19 ?object } LIMIT ${LIMIT} }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-    } LIMIT ${LIMIT}`,
+    }`,
   },
   occupation: {
     forward: "occupation",
     query: `SELECT ?subjectLabel ?objectLabel WHERE {
-      ?subject wdt:P31 wd:Q5 ; wdt:P106 ?object .
+      { SELECT ?subject ?object WHERE { ?subject wdt:P106 ?object } LIMIT ${LIMIT} }
       SERVICE wikibase:label { bd:serviceParam wikibase:language "en". }
-    } LIMIT ${LIMIT}`,
+    }`,
   },
 };
 
