@@ -168,7 +168,8 @@ export function bindAll(vectors: Hypervector[]): Hypervector {
 /**
  * Bundle (superimpose) several hypervectors with an element-wise majority vote.
  * The result is similar to every input. Ties (a sum of exactly zero, possible
- * with an even number of inputs) are resolved deterministically to +1.
+ * with an even number of inputs) are broken with a per-index deterministic sign
+ * (`tieSign`) so the bundle stays unbiased rather than drifting toward +1.
  */
 export function bundle(vectors: Hypervector[]): Hypervector {
   if (vectors.length === 0) {

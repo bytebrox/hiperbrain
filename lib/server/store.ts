@@ -199,22 +199,47 @@ class SupabaseStore implements FactStore {
       );
   }
 
-  async listFacts(): Promise<StoredFact[]> {
-    const out: StoredFact[] = [];
-    // Page through results so we are not limited by PostgREST's per-request
-    // row cap. Stop at MAX_FACTS or when a short page signals the end. Only
-    // active facts are served, so recall never sees superseded/disputed values.
-    for (let from = 0; from < MAX_FACTS; from += PAGE_SIZE) {
-      const to = Math.min(from + PAGE_SIZE, MAX_FACTS) - 1;
-      const { data, error } = await this.client
-        .from("facts")
-        .select("id,subject,relation,object,status,created_at")
-        .eq("status", "active")
-        .order("created_at", { ascending: true })
-        .range(from, to);
-      if (error) throw error;
+  /** Number of active facts (the rows `listFacts` serves). */
+  private async countActive(): Promise<number> {
+    const { count, error } = await this.client
+      .from("facts")
+      .select("*", { count: "exact", head: true })
+      .eq("status", "active");
+    if (error) throw error;
+    return count ?? 0;
+  }
 
-      const rows = data as FactRow[];
+  /** Fetch one page of active facts ordered by creation time. */
+  private async fetchFactsPage(from: number, to: number): Promise<FactRow[]> {
+    const { data, error } = await this.client
+      .from("facts")
+      .select("id,subject,relation,object,status,created_at")
+      .eq("status", "active")
+      .order("created_at", { ascending: true })
+      .range(from, to);
+    if (error) throw error;
+    return data as FactRow[];
+  }
+
+  async listFacts(): Promise<StoredFact[]> {
+    // Page through results so we are not limited by PostgREST's per-request row
+    // cap. We know the row count up front, so every page (capped at MAX_FACTS)
+    // can be fetched in parallel instead of in a sequential await chain - a big
+    // latency win on large brains. Only active facts are served, so recall
+    // never sees superseded/disputed values. Pages whose range falls past the
+    // active-row count simply come back empty, and concatenating them in page
+    // order preserves the ascending created_at ordering.
+    const total = Math.min(await this.countActive(), MAX_FACTS);
+    if (total === 0) return [];
+
+    const pages: Promise<FactRow[]>[] = [];
+    for (let from = 0; from < total; from += PAGE_SIZE) {
+      const to = Math.min(from + PAGE_SIZE, total) - 1;
+      pages.push(this.fetchFactsPage(from, to));
+    }
+
+    const out: StoredFact[] = [];
+    for (const rows of await Promise.all(pages)) {
       for (const row of rows) {
         out.push({
           id: row.id,
@@ -225,7 +250,6 @@ class SupabaseStore implements FactStore {
           ts: Date.parse(row.created_at),
         });
       }
-      if (rows.length < to - from + 1) break; // last page reached
     }
     return out;
   }

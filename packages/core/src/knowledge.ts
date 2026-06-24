@@ -97,6 +97,9 @@ export class KnowledgeBrain {
   // makes analogical reasoning possible (see `analogy`).
   private recordAcc = new Map<string, Int32Array>();
   private recordMemo = new Map<string, Hypervector>();
+  // Bit-packed form of each entity's record, cached for the neighbour search.
+  // Invalidated alongside `recordMemo` whenever the entity gains a new fact.
+  private packedRecordCache = new Map<string, PackedHypervector>();
   private objects = new Set<string>();
 
   constructor(dimensions = DIMENSIONS, seed = 0) {
@@ -165,6 +168,7 @@ export class KnowledgeBrain {
     }
     accumulate(acc, bind(this.symbol(relation), this.symbol(object)));
     this.recordMemo.delete(subject);
+    this.packedRecordCache.delete(subject);
 
     this.factCount++;
   }
@@ -180,6 +184,21 @@ export class KnowledgeBrain {
     return memo;
   }
 
+  /**
+   * Bit-packed form of an entity's record, cached for the neighbour search.
+   * `packBits` is deterministic, so the cached vector is byte-identical to a
+   * fresh pack; the cache is cleared in `learn()` when the record changes.
+   */
+  private packedRecord(entity: string): PackedHypervector | null {
+    let p = this.packedRecordCache.get(entity);
+    if (p) return p;
+    const rec = this.record(entity);
+    if (!rec) return null;
+    p = packBits(rec);
+    this.packedRecordCache.set(entity, p);
+    return p;
+  }
+
   private memory(bucket: RelationBucket): Hypervector {
     if (!bucket.memo) bucket.memo = finalizeAccumulator(bucket.acc);
     return bucket.memo;
@@ -190,10 +209,22 @@ export class KnowledgeBrain {
    * Uses the bit-packed XOR/popcount path, which yields the same cosine ranking
    * as the bipolar form but runs far faster over large candidate sets.
    */
-  private cleanup(query: Hypervector, names: Iterable<string>, k: number): Match[] {
+  private cleanup(
+    query: Hypervector,
+    names: Iterable<string>,
+    k: number,
+    exclude?: string | ReadonlySet<string>,
+  ): Match[] {
     const q = packBits(query);
     const matches: Match[] = [];
     for (const name of names) {
+      if (exclude !== undefined) {
+        if (typeof exclude === "string") {
+          if (name === exclude) continue;
+        } else if (exclude.has(name)) {
+          continue;
+        }
+      }
       matches.push({
         name,
         score: similarityPacked(q, this.packedSymbol(name), this.dimensions),
@@ -221,12 +252,15 @@ export class KnowledgeBrain {
   ask(subject: string, relation: string, k = 5): Match[] {
     const bucket = this.buckets.get(relation);
     if (!bucket) return [];
-    const candidates = [...bucket.objects].filter((c) => c !== subject);
-    if (candidates.length === 0) return [];
+    // Candidates are every object of this relation except the subject itself.
+    // Iterate the Set directly (excluding `subject`) instead of materialising a
+    // filtered array on every recall.
+    const candidateCount = bucket.objects.size - (bucket.objects.has(subject) ? 1 : 0);
+    if (candidateCount === 0) return [];
 
     const rec = this.record(subject);
     const viaRecord = rec
-      ? this.cleanup(bind(rec, this.symbol(relation)), candidates, k)
+      ? this.cleanup(bind(rec, this.symbol(relation)), bucket.objects, k, subject)
       : null;
     // Fast path: a confident hit from the subject's record needs nothing more.
     if (viaRecord && recallConfidence(viaRecord, this.dimensions).confident) {
@@ -235,8 +269,9 @@ export class KnowledgeBrain {
 
     const viaBucket = this.cleanup(
       bind(this.symbol(subject), this.memory(bucket)),
-      candidates,
+      bucket.objects,
       k,
+      subject,
     );
     if (!viaRecord) return viaBucket;
 
@@ -252,8 +287,7 @@ export class KnowledgeBrain {
     const bucket = this.buckets.get(relation);
     if (!bucket) return [];
     const query = bind(this.symbol(object), this.memory(bucket));
-    const candidates = [...bucket.subjects].filter((c) => c !== object);
-    return this.cleanup(query, candidates, k);
+    return this.cleanup(query, bucket.subjects, k, object);
   }
 
   /**
@@ -282,8 +316,7 @@ export class KnowledgeBrain {
     const query = bind(this.symbol(value), mapping);
 
     const exclude = new Set([value, from, to]);
-    const candidates = [...this.objects].filter((c) => !exclude.has(c));
-    return this.cleanup(query, candidates, k);
+    return this.cleanup(query, this.objects, k, exclude);
   }
 
   /**
@@ -309,15 +342,14 @@ export class KnowledgeBrain {
    * same continent, ...) end up close together with no explicit clustering step.
    */
   similarConcepts(entity: string, k = 5): Match[] {
-    const rec = this.record(entity);
-    if (!rec) return [];
-    const q = packBits(rec);
+    const q = this.packedRecord(entity);
+    if (!q) return [];
     const matches: Match[] = [];
     for (const other of this.recordAcc.keys()) {
       if (other === entity) continue;
-      const orec = this.record(other);
+      const orec = this.packedRecord(other);
       if (!orec) continue;
-      matches.push({ name: other, score: similarityPacked(q, packBits(orec), this.dimensions) });
+      matches.push({ name: other, score: similarityPacked(q, orec, this.dimensions) });
     }
     matches.sort((a, b) => b.score - a.score);
     return matches.slice(0, k);
